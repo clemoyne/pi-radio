@@ -1,0 +1,580 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="/favicon.ico?v=2"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plane display</title>
+<style>
+:root {
+  color-scheme: dark;
+  --page: #000;
+  --surface: #161615;
+  --ink: #f0efec;
+  --ink-2: #c3c2b7;
+  --muted: #989690;
+  --border: rgba(255,255,255,0.12);
+  --accent: #3987e5;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; background: var(--page); color: var(--ink); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; overflow: hidden; }
+#stage { position: fixed; inset: 0; display: grid; place-items: center; }
+#panel { display: block; background: #000; }
+body.idle-cursor { cursor: none; }
+.controls { position: fixed; top: 12px; right: 12px; display: flex; gap: 8px; transition: opacity .4s; z-index: 2; }
+body.idle-cursor .controls { opacity: 0; pointer-events: none; }
+.controls button, .drawer button { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+.controls button:hover, .drawer button:hover { border-color: var(--muted); }
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(360px, 100vw); background: var(--surface); border-left: 1px solid var(--border); padding: 16px; overflow-y: auto; transform: translateX(100%); transition: transform .25s; z-index: 3; }
+.drawer.open { transform: none; }
+.drawer h2 { font-size: 16px; margin: 0 0 4px; display: flex; justify-content: space-between; align-items: center; }
+.drawer h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 18px 0 6px; font-weight: 600; }
+.drawer label { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 6px 0; color: var(--ink-2); }
+.drawer select, .drawer input[type=text] { font: inherit; color: var(--ink); background: #0d0d0d; border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; max-width: 190px; }
+.drawer input[type=range] { width: 160px; accent-color: var(--accent); }
+.drawer input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; }
+.drawer .note { color: var(--muted); font-size: 12px; margin: 4px 0; }
+.drawer a { color: var(--accent); }
+.links { margin-top: 18px; font-size: 13px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="panel" role="img" aria-label="Nearest aircraft"></canvas></div>
+<div class="controls">
+  <button id="full" type="button">Full screen</button>
+  <button id="open" type="button" aria-controls="drawer" aria-expanded="false">Settings</button>
+</div>
+<aside class="drawer" id="drawer" aria-label="Display settings">
+  <h2>Display settings <button id="close" type="button">Close</button></h2>
+  <p class="note">Kept in this browser. Live data from this Pi's receiver; airline, route and type names from sdrpi.</p>
+
+  <h3>What to show</h3>
+  <label>Mode <select id="mode">
+    <option value="nearby">Planes nearby, in turn</option>
+    <option value="closest">Closest plane only</option>
+    <option value="track">Follow one flight</option>
+  </select></label>
+  <label id="track-row">Flight, registration or hex <input id="track" type="text" placeholder="ACA858 or C-FITW" autocomplete="off" spellcheck="false"></label>
+  <label>Within <select id="radius">
+    <option value="3">3 km</option><option value="5">5 km</option><option value="10">10 km</option><option value="20">20 km</option>
+    <option value="50">50 km</option><option value="100">100 km</option><option value="0">Anywhere in range</option>
+  </select></label>
+  <label>Below <select id="ceiling">
+    <option value="0">Any altitude</option><option value="5000">5,000 ft</option><option value="10000">10,000 ft</option><option value="20000">20,000 ft</option>
+  </select></label>
+  <label>Next plane every <select id="cycle">
+    <option value="5">5 s</option><option value="8">8 s</option><option value="15">15 s</option><option value="30">30 s</option>
+  </select></label>
+
+  <h3>Layout</h3>
+  <label>Top line <select id="top">
+    <option value="airline">Airline name</option><option value="flight">Flight number</option>
+  </select></label>
+  <label>Bottom lines <select id="bottom">
+    <option value="metrics">Altitude, speed, track</option><option value="airports">Airport cities</option><option value="alternate">Take turns</option>
+  </select></label>
+
+  <h3>Units</h3>
+  <label>Altitude <select id="alt"><option value="ft">feet</option><option value="m">metres</option></select></label>
+  <label>Speed <select id="spd"><option value="mph">mph</option><option value="kt">knots</option><option value="kmh">km/h</option></select></label>
+  <label>Direction <select id="trk"><option value="deg">degrees</option><option value="compass">compass</option></select></label>
+  <label>Vertical rate <select id="vr"><option value="fts">ft/s</option><option value="fpm">ft/min</option><option value="ms">m/s</option></select></label>
+
+  <h3>Look</h3>
+  <label>Colours <select id="theme">
+    <option value="classic">White and blue</option><option value="amber">Amber</option><option value="green">Green</option><option value="red">Red</option>
+  </select></label>
+  <label>Brightness <input id="brightness" type="range" min="20" max="100" step="5"></label>
+  <label>Show unlit LEDs <input id="unlit" type="checkbox"></label>
+  <label>Glow <input id="glow" type="checkbox"></label>
+
+  <p class="links"><a href="/aircraft/">Aircraft log</a> · <a href="/skyaware/">SkyAware</a> · <a href="http://sdrpi.local:8080/flights/">Flights</a> · <a href="http://sdrpi.local:8080/weather/">Weather</a> · <a href="/status/">Status</a></p>
+</aside>
+<script>
+"use strict";
+const W = 128, H = 64;
+const SDRPI = "http://sdrpi.local:8080/flights/api/describe";
+
+// 5x7 dot font, five columns per character, bit 0 at the top; g, j, p, q and y use an eighth row for descenders
+const FONT = {
+  " ": [0,0,0,0,0], "!": [0,0,0x5f,0,0], '"': [0,7,0,7,0], "#": [0x14,0x7f,0x14,0x7f,0x14], "$": [0x24,0x2a,0x7f,0x2a,0x12],
+  "%": [0x23,0x13,0x08,0x64,0x62], "&": [0x36,0x49,0x55,0x22,0x50], "'": [0,5,3,0,0], "(": [0,0x1c,0x22,0x41,0], ")": [0,0x41,0x22,0x1c,0],
+  "*": [0x14,0x08,0x3e,0x08,0x14], "+": [0x08,0x08,0x3e,0x08,0x08], ",": [0,0x50,0x30,0,0], "-": [0x08,0x08,0x08,0x08,0x08],
+  ".": [0,0x60,0x60,0,0], "/": [0x20,0x10,0x08,0x04,0x02],
+  "0": [0x3e,0x51,0x49,0x45,0x3e], "1": [0,0x42,0x7f,0x40,0], "2": [0x42,0x61,0x51,0x49,0x46], "3": [0x21,0x41,0x45,0x4b,0x31],
+  "4": [0x18,0x14,0x12,0x7f,0x10], "5": [0x27,0x45,0x45,0x45,0x39], "6": [0x3c,0x4a,0x49,0x49,0x30], "7": [0x01,0x71,0x09,0x05,0x03],
+  "8": [0x36,0x49,0x49,0x49,0x36], "9": [0x06,0x49,0x49,0x29,0x1e],
+  ":": [0,0x36,0x36,0,0], ";": [0,0x56,0x36,0,0], "<": [0x08,0x14,0x22,0x41,0], "=": [0x14,0x14,0x14,0x14,0x14], ">": [0,0x41,0x22,0x14,0x08],
+  "?": [0x02,0x01,0x51,0x09,0x06], "@": [0x32,0x49,0x79,0x41,0x3e],
+  "A": [0x7e,0x11,0x11,0x11,0x7e], "B": [0x7f,0x49,0x49,0x49,0x36], "C": [0x3e,0x41,0x41,0x41,0x22], "D": [0x7f,0x41,0x41,0x22,0x1c],
+  "E": [0x7f,0x49,0x49,0x49,0x41], "F": [0x7f,0x09,0x09,0x09,0x01], "G": [0x3e,0x41,0x49,0x49,0x7a], "H": [0x7f,0x08,0x08,0x08,0x7f],
+  "I": [0,0x41,0x7f,0x41,0], "J": [0x20,0x40,0x41,0x3f,0x01], "K": [0x7f,0x08,0x14,0x22,0x41], "L": [0x7f,0x40,0x40,0x40,0x40],
+  "M": [0x7f,0x02,0x0c,0x02,0x7f], "N": [0x7f,0x04,0x08,0x10,0x7f], "O": [0x3e,0x41,0x41,0x41,0x3e], "P": [0x7f,0x09,0x09,0x09,0x06],
+  "Q": [0x3e,0x41,0x51,0x21,0x5e], "R": [0x7f,0x09,0x19,0x29,0x46], "S": [0x46,0x49,0x49,0x49,0x31], "T": [0x01,0x01,0x7f,0x01,0x01],
+  "U": [0x3f,0x40,0x40,0x40,0x3f], "V": [0x1f,0x20,0x40,0x20,0x1f], "W": [0x3f,0x40,0x38,0x40,0x3f], "X": [0x63,0x14,0x08,0x14,0x63],
+  "Y": [0x07,0x08,0x70,0x08,0x07], "Z": [0x61,0x51,0x49,0x45,0x43],
+  "[": [0,0x7f,0x41,0x41,0], "\\": [0x02,0x04,0x08,0x10,0x20], "]": [0,0x41,0x41,0x7f,0], "_": [0x40,0x40,0x40,0x40,0x40],
+  "a": [0x20,0x54,0x54,0x54,0x78], "b": [0x7f,0x48,0x44,0x44,0x38], "c": [0x38,0x44,0x44,0x44,0x20], "d": [0x38,0x44,0x44,0x48,0x7f],
+  "e": [0x38,0x54,0x54,0x54,0x18], "f": [0x08,0x7e,0x09,0x01,0x02], "g": [0x18,0xa4,0xa4,0xa4,0x7c], "h": [0x7f,0x08,0x04,0x04,0x78],
+  "i": [0,0x44,0x7d,0x40,0], "j": [0x40,0x80,0x84,0x7d,0], "k": [0x7f,0x10,0x28,0x44,0], "l": [0,0x41,0x7f,0x40,0],
+  "m": [0x7c,0x04,0x18,0x04,0x78], "n": [0x7c,0x08,0x04,0x04,0x78], "o": [0x38,0x44,0x44,0x44,0x38], "p": [0xfc,0x24,0x24,0x24,0x18],
+  "q": [0x18,0x24,0x24,0x24,0xfc], "r": [0x7c,0x08,0x04,0x04,0x08], "s": [0x48,0x54,0x54,0x54,0x20], "t": [0x04,0x3f,0x44,0x40,0x20],
+  "u": [0x3c,0x40,0x40,0x20,0x7c], "v": [0x1c,0x20,0x40,0x20,0x1c], "w": [0x3c,0x40,0x30,0x40,0x3c], "x": [0x44,0x28,0x10,0x28,0x44],
+  "y": [0x1c,0xa0,0xa0,0xa0,0x7c], "z": [0x44,0x64,0x54,0x4c,0x44], "|": [0,0,0x7f,0,0], "~": [0x08,0x04,0x08,0x10,0x08],
+};
+
+// A plane seen from above, nose up; turned to the aircraft's track on the badge
+const PLANE = [
+  ".......#.......",
+  "......###......",
+  "......###......",
+  "......###......",
+  ".....#####.....",
+  "...#########...",
+  ".#############.",
+  "###############",
+  "......###......",
+  "......###......",
+  "......###......",
+  ".....#####.....",
+  "....#######....",
+  "......#.#......",
+];
+
+// Badge colours for airlines heard here often; others get a colour from their code
+const AIRLINE_COLOURS = {
+  ACA: "#d6222f", ROU: "#b2232f", JZA: "#d6222f", WJA: "#00a5b5", WEN: "#00a5b5", WSW: "#ffcc00", POE: "#24418f",
+  FLE: "#8dc63f", TSC: "#2b50a1", SWG: "#ff6a13", UAL: "#1f5fbf", AAL: "#2a6fc4", DAL: "#c8102e", JBU: "#2a46b8",
+  SWA: "#304cb2", ASA: "#01426a", FDX: "#5b2a97", UPS: "#8a5a2b", BAW: "#2a5caa", DLH: "#f9ba00", AFR: "#2050c8",
+  KLM: "#00a1de", EIN: "#00875a", VIR: "#d4153a", SIA: "#f0ab00", UAE: "#c8102e", QTR: "#7b1c3e", CPA: "#00676c",
+  JAL: "#cc0000", ANA: "#1d4f9f", TAP: "#d22630", ITY: "#2a62d8", SKW: "#2a6fc4", RPA: "#2a6fc4", ENY: "#2a6fc4",
+  EDV: "#c8102e", GJS: "#1f5fbf", NKS: "#ffd200", FFT: "#2f8f4f", AMX: "#14284b", CMP: "#1f4a9c", ICE: "#1f4a9c",
+};
+
+const THEMES = {
+  classic: {main: [235, 235, 242], metric: [120, 200, 255], dim: [120, 120, 130], alert: [255, 70, 60]},
+  amber: {main: [255, 176, 40], metric: [255, 140, 20], dim: [150, 95, 20], alert: [255, 60, 40]},
+  green: {main: [90, 255, 120], metric: [40, 220, 160], dim: [40, 130, 60], alert: [255, 80, 60]},
+  red: {main: [255, 70, 60], metric: [255, 120, 90], dim: [140, 40, 30], alert: [255, 255, 255]},
+};
+
+const DEFAULTS = {mode: "nearby", track: "", radius: "10", ceiling: "0", cycle: "8", top: "airline", bottom: "metrics",
+  alt: "ft", spd: "mph", trk: "deg", vr: "fts", theme: "classic", brightness: "85", unlit: true, glow: true};
+const settings = {...DEFAULTS};
+try { Object.assign(settings, JSON.parse(localStorage.getItem("plane-display") || "{}")); } catch (e) { /* private window */ }
+function save() { try { localStorage.setItem("plane-display", JSON.stringify(settings)); } catch (e) { /* not kept */ } }
+
+// ---- The LED frame buffer and drawing ----
+
+const pixels = new ImageData(W, H);
+let lit = new Uint8Array(W * H);
+
+function clear() { lit.fill(0); pixels.data.fill(0); }
+function dot(x, y, rgb) {
+  x |= 0; y |= 0;
+  if (x < 0 || y < 0 || x >= W || y >= H) return;
+  const i = y * W + x, k = i * 4, b = settings.brightness / 100;
+  lit[i] = 1;
+  pixels.data[k] = rgb[0] * b; pixels.data[k + 1] = rgb[1] * b; pixels.data[k + 2] = rgb[2] * b; pixels.data[k + 3] = 255;
+}
+function plain(text) { return String(text).normalize("NFD").replace(/[̀-ͯ]/g, ""); }
+function textWidth(text, scale = 1) { return text.length ? (text.length * 6 - 1) * scale : 0; }
+// Draws text clipped to [x, x + width); scroll shifts it left
+function text(str, x, y, rgb, {width = W - x, scale = 1, scroll = 0} = {}) {
+  str = plain(str);
+  let cx = x - scroll;
+  for (const ch of str) {
+    const cols = FONT[ch] || FONT["?"];
+    for (let c = 0; c < 5; c++) {
+      for (let r = 0; r < 8; r++) {
+        if (!(cols[c] >> r & 1)) continue;
+        for (let sx = 0; sx < scale; sx++) for (let sy = 0; sy < scale; sy++) {
+          const px = cx + c * scale + sx;
+          if (px >= x && px < x + width) dot(px, y + r * scale + sy, rgb);
+        }
+      }
+    }
+    cx += 6 * scale;
+    if (cx > x + width) break;
+  }
+}
+// Text that doesn't fit scrolls slowly, pausing at each end
+function line(str, x, y, rgb, width, now) {
+  const over = textWidth(plain(str)) - width;
+  let scroll = 0;
+  if (over > 0) {
+    const pause = 1500, speed = 0.03, run = over / speed, cycle = pause * 2 + run * 2;
+    const t = now % cycle;
+    scroll = t < pause ? 0 : t < pause + run ? (t - pause) * speed : t < pause * 2 + run ? over : over - (t - pause * 2 - run) * speed;
+  }
+  text(str, x, y, rgb, {width, scroll: Math.round(scroll)});
+}
+
+function hexColour(hex) { return [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)); }
+function codeColour(code) {
+  let h = 0;
+  for (const ch of code) h = (h * 31 + ch.charCodeAt(0)) % 360;
+  // HSL with fixed saturation and lightness, for a mid-tone LED colour
+  const s = 0.65, l = 0.45, a = s * Math.min(l, 1 - l);
+  const f = n => { const k = (n + h / 30) % 12; return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)))); };
+  return [f(0), f(8), f(4)];
+}
+
+function badge(x0, y0, code, colour, track, now) {
+  const size = 32;
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const corner = (x === 0 || x === size - 1) && (y === 0 || y === size - 1);
+    if (!corner) dot(x0 + x, y0 + y, colour);
+  }
+  const ink = colour[0] * 0.3 + colour[1] * 0.59 + colour[2] * 0.11 > 165 ? [10, 10, 10] : [255, 255, 255];
+  // Plane pictogram turned to the track: each LED samples the glyph at nine points and lights if half are inside
+  const angle = (track == null ? 0 : track) * Math.PI / 180, cos = Math.cos(angle), sin = Math.sin(angle);
+  const cx = 7.5, cy = 7.5, ox = x0 + 16, oy = y0 + 11;
+  const inside = (x, y) => { const gx = Math.floor(x), gy = Math.floor(y); return gy >= 0 && gy < PLANE.length && gx >= 0 && gx < 15 && PLANE[gy][gx] === "#"; };
+  for (let dy = -10; dy <= 10; dy++) for (let dx = -10; dx <= 10; dx++) {
+    let hits = 0;
+    for (const sy of [0.17, 0.5, 0.83]) for (const sx of [0.17, 0.5, 0.83]) {
+      const px = dx + sx - 0.5, py = dy + sy - 0.5;
+      if (inside(cos * px + sin * py + cx, -sin * px + cos * py + cy)) hits++;
+    }
+    if (hits >= 5) dot(ox + dx, oy + dy, ink);
+  }
+  code = (code || "").slice(0, 5);
+  text(code, x0 + Math.floor((size - textWidth(code)) / 2), y0 + 23, ink, {width: size});
+}
+
+// ---- Units and names ----
+
+const COMPASS = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
+function compass(deg) { return COMPASS[Math.round(deg / 22.5) % 16]; }
+function fmtAlt(ft) {
+  if (ft == null) return "-";
+  if (ft === "ground") return "gnd";
+  if (settings.alt === "m") { const m = ft * 0.3048; return m < 1000 ? Math.round(m) + "m" : (m / 1000).toFixed(m < 10000 ? 1 : 0) + "km"; }
+  return ft < 1000 ? Math.round(ft) + "ft" : (ft / 1000).toFixed(ft < 10000 ? 1 : 0) + "kft";
+}
+function fmtSpd(kt) {
+  if (kt == null) return "-";
+  return settings.spd === "kt" ? Math.round(kt) + "kt" : settings.spd === "kmh" ? Math.round(kt * 1.852) + "kmh" : Math.round(kt * 1.15078) + "mph";
+}
+function fmtTrk(deg) { return deg == null ? "-" : settings.trk === "compass" ? compass(deg) : Math.round(deg) + "deg"; }
+function fmtVr(fpm) {
+  if (fpm == null) return "-";
+  const sign = v => (v > 0 ? "+" : "") + v;
+  return settings.vr === "fpm" ? sign(Math.round(fpm / 64) * 64) + "fpm" : settings.vr === "ms" ? sign((fpm * 0.00508).toFixed(1)) + "m/s" : sign(Math.round(fpm / 60)) + "ft/s";
+}
+function fit(candidates, chars) {
+  const list = candidates.filter(Boolean).map(plain);
+  return list.find(c => c.length <= chars) || list[list.length - 1] || "";
+}
+function airlineName(name, chars) {
+  if (!name) return "";
+  const noParen = name.replace(/\s*\(.*?\)/g, "");
+  return fit([name, noParen, noParen.replace(/\s+(Air Lines|Airlines|Airline|Airways|Aviation|International)$/i, "")], chars);
+}
+const MAKERS = /^(Airbus|Boeing|Embraer|Bombardier|McDonnell Douglas|De Havilland( Canada)?|Canadair|Antonov|Lockheed|Saab|Fokker|ATR)\s+/;
+function typeName(name, chars) {
+  if (!name) return "";
+  const paren = (name.match(/\(([^)]+)\)/) || [])[1];
+  const bare = name.replace(/\s*\(.*?\)/g, "");
+  return paren ? paren : fit([MAKERS.test(bare) ? bare.replace(MAKERS, "") : bare, bare.replace(MAKERS, "")], chars);
+}
+
+// ---- Data ----
+
+let receiver = null, aircraft = [], feedOk = false, lastFeed = 0;
+const who = new Map();     // hex -> garage_pi's description {at, data}
+const names = new Map();   // hex|callsign -> sdrpi's description {at, data}
+
+function km(lat1, lon1, lat2, lon2) {
+  const r = Math.PI / 180, a = Math.sin((lat2 - lat1) * r / 2) ** 2 + Math.cos(lat1 * r) * Math.cos(lat2 * r) * Math.sin((lon2 - lon1) * r / 2) ** 2;
+  return 12742 * Math.asin(Math.sqrt(a));
+}
+function bearingTo(lat1, lon1, lat2, lon2) {
+  const r = Math.PI / 180, y = Math.sin((lon2 - lon1) * r) * Math.cos(lat2 * r);
+  const x = Math.cos(lat1 * r) * Math.sin(lat2 * r) - Math.sin(lat1 * r) * Math.cos(lat2 * r) * Math.cos((lon2 - lon1) * r);
+  return (Math.atan2(y, x) / r + 360) % 360;
+}
+
+async function getJSON(url, ms = 4000) {
+  const control = new AbortController(), timer = setTimeout(() => control.abort(), ms);
+  try {
+    const reply = await fetch(url, {cache: "no-store", signal: control.signal});
+    if (!reply.ok) throw new Error(reply.status);
+    return await reply.json();
+  } finally { clearTimeout(timer); }
+}
+
+async function loadReceiver() {
+  try {
+    const d = await getJSON("/aircraft/data/data.json");
+    if (Array.isArray(d.receiver)) receiver = d.receiver;
+  } catch (e) { /* tried again later */ }
+}
+
+async function poll() {
+  try {
+    const d = await getJSON("/skyaware/data/aircraft.json", 3000);
+    aircraft = d.aircraft.filter(a => a.lat != null && (a.seen_pos ?? 99) < 30).map(a => {
+      const out = {hex: a.hex.replace("~", ""), callsign: (a.flight || "").trim(), lat: a.lat, lon: a.lon,
+        alt: a.alt_baro ?? a.alt_geom, gs: a.gs, track: a.track ?? a.true_heading ?? a.mag_heading,
+        vr: a.baro_rate ?? a.geom_rate, squawk: a.squawk, category: a.category, emergency: a.emergency};
+      if (receiver) { out.km = km(receiver[0], receiver[1], a.lat, a.lon); out.bearing = bearingTo(receiver[0], receiver[1], a.lat, a.lon); }
+      return out;
+    });
+    feedOk = true; lastFeed = Date.now();
+  } catch (e) { feedOk = Date.now() - lastFeed < 15000; }
+  describeAll();
+}
+
+let describing = false;
+async function describeAll() {
+  if (describing) return;
+  const now = Date.now();
+  const stale = aircraft.filter(a => !who.has(a.hex) || now - who.get(a.hex).at > 120000).map(a => a.hex);
+  if (!stale.length) return;
+  describing = true;
+  try {
+    for (let i = 0; i < stale.length; i += 30) {
+      const d = await getJSON("/aircraft/api/describe?hex=" + stale.slice(i, i + 30).join(","));
+      for (const [hex, data] of Object.entries(d.aircraft)) who.set(hex, {at: Date.now(), data});
+    }
+  } catch (e) { /* tried again on the next poll */ }
+  describing = false;
+}
+
+// sdrpi knows airline names, routes and type names; asked only for planes about to be shown
+async function name(a) {
+  const info = who.get(a.hex)?.data || {};
+  const key = a.hex + "|" + a.callsign, cached = names.get(key);
+  if (cached && (cached.pending || Date.now() - cached.at < (cached.data ? 900000 : 60000))) return;
+  names.set(key, {pending: true});
+  const q = new URLSearchParams({callsign: a.callsign || "", lat: a.lat.toFixed(4), lon: a.lon.toFixed(4)});
+  for (const k of ["make", "model", "type", "icao_type", "registrant", "operator"]) if (info[k]) q.set(k, info[k]);
+  if (a.track != null) q.set("track", Math.round(a.track));
+  if (a.vr != null) q.set("vr", a.vr);
+  try { names.set(key, {at: Date.now(), data: await getJSON(SDRPI + "?" + q, 5000)}); }
+  catch (e) { names.set(key, {at: Date.now(), data: null}); }
+}
+
+// ---- Choosing which plane to show ----
+
+let showing = null, shownSince = 0;
+function candidates() {
+  const radius = +settings.radius, ceiling = +settings.ceiling;
+  return aircraft.filter(a => (!radius || (a.km != null && a.km <= radius)) && (!ceiling || (typeof a.alt === "number" && a.alt <= ceiling)))
+    .sort((a, b) => (a.km ?? 1e9) - (b.km ?? 1e9));
+}
+function tracked() {
+  const q = settings.track.trim().toUpperCase().replace(/\s+/g, "");
+  if (!q) return null;
+  const bare = q.replace(/-/g, "");
+  return aircraft.find(a => a.callsign.toUpperCase() === q || a.hex.toUpperCase() === q ||
+    (who.get(a.hex)?.data?.reg || "").toUpperCase().replace(/-/g, "") === bare) || null;
+}
+function pick(now) {
+  if (settings.mode === "track") return tracked();
+  const list = candidates();
+  if (!list.length) return null;
+  if (settings.mode === "closest") return list[0];
+  const current = showing && list.find(a => a.hex === showing);
+  if (current && now - shownSince < settings.cycle * 1000) return current;
+  const next = current ? list[(list.indexOf(current) + 1) % list.length] : list[0];
+  if (!current || next.hex !== showing) { showing = next.hex; shownSince = now; }
+  return next;
+}
+
+// ---- Screens ----
+
+function flightScreen(a, now) {
+  const t = THEMES[settings.theme] || THEMES.classic;
+  const info = who.get(a.hex)?.data || {};
+  const named = names.get(a.hex + "|" + a.callsign)?.data || {};
+  const reg = info.reg || "";
+  const callsign = a.callsign || info.callsign || "";
+  const isAirline = !!named.airline && /^[A-Z]{3}\d/.test(callsign);
+  const heli = a.category === "A7";
+  const code = isAirline ? named.airline : heli ? "HELI" : (named.actype || info.icao_type || "").slice(0, 4);
+  const colour = isAirline ? (AIRLINE_COLOURS[named.airline] ? hexColour(AIRLINE_COLOURS[named.airline]) : codeColour(named.airline)) : [70, 70, 78];
+  badge(0, 0, code, colour, a.track, now);
+
+  const right = 36, width = W - right, chars = 15;
+  const top = settings.top === "flight" || !isAirline
+    ? (callsign || reg || a.hex.toUpperCase())
+    : airlineName(named.airline_name, chars) || callsign;
+  const route = named.route ? named.route.map(r => r.iata || r.ident).join("-") : "";
+  const emergency = ["7500", "7600", "7700"].includes(a.squawk);
+  const second = emergency ? "SQUAWK " + a.squawk : route || (reg && reg !== top ? reg : (callsign !== top ? callsign : ""));
+  const kind = typeName(named.type_name, chars) || named.actype || info.icao_type || info.model || (heli ? "Helicopter" : "") ||
+    (reg !== second && reg !== top ? reg : "");
+  line(top, right, 2, t.main, width, now);
+  line(second, right, 13, emergency ? t.alert : t.main, width, now);
+  line(kind, right, 24, t.main, width, now);
+
+  let rows;
+  const metrics = ["Alt:" + fmtAlt(a.alt) + ",Spd:" + fmtSpd(a.gs), "Trk:" + fmtTrk(a.track) + ",Vr:" + fmtVr(a.vr)];
+  const cities = named.route && named.route.map(r => plain(r.city || r.name || r.ident));
+  const turn = Math.floor(now / 6000) % 2 === 1;
+  if (settings.mode === "track") {
+    const where = a.km != null ? `${a.km < 10 ? a.km.toFixed(1) : Math.round(a.km)}km ${compass(a.bearing)} of home` : "Position unknown";
+    rows = turn && cities ? cities : [where, "Alt:" + fmtAlt(a.alt) + ",Spd:" + fmtSpd(a.gs)];
+  } else if (cities && (settings.bottom === "airports" || (settings.bottom === "alternate" && turn))) {
+    rows = cities;
+  } else {
+    rows = metrics;
+  }
+  line(rows[0], 0, 40, t.metric, W, now);
+  line(rows[1], 0, 52, t.metric, W, now);
+}
+
+function idleScreen(now, message) {
+  const t = THEMES[settings.theme] || THEMES.classic;
+  const d = new Date();
+  const clock = String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+  // Blinking colon, like a hardware clock
+  const shown = d.getSeconds() % 2 ? clock : clock.replace(":", " ");
+  text(shown, Math.floor((W - textWidth(clock, 2)) / 2), 8, t.main, {scale: 2});
+  line(message[0], Math.max(0, Math.floor((W - textWidth(message[0])) / 2)), 38, t.dim, W, now);
+  line(message[1], Math.max(0, Math.floor((W - textWidth(message[1])) / 2)), 50, t.dim, W, now);
+}
+
+function compose(now) {
+  clear();
+  if (!feedOk) return idleScreen(now, ["No feed from", "the receiver"]);
+  const a = pick(now);
+  if (a) {
+    name(a);
+    // Ask about the next few too, so they're named when their turn comes
+    if (settings.mode === "nearby") candidates().slice(0, 4).forEach(name);
+    return flightScreen(a, now);
+  }
+  if (settings.mode === "track") {
+    return idleScreen(now, settings.track.trim() ? [plain(settings.track.trim().toUpperCase()), "not in range"] : ["Pick a flight", "in Settings"]);
+  }
+  const r = +settings.radius;
+  idleScreen(now, [r ? `None within ${r}km` : "No planes", `${aircraft.length} in range`]);
+}
+
+// ---- Drawing the panel: blocky pixels under a mask of round holes, plus glow ----
+
+const canvas = document.getElementById("panel"), ctx = canvas.getContext("2d");
+const small = document.createElement("canvas"); small.width = W; small.height = H;
+const sctx = small.getContext("2d");
+const glowCanvas = document.createElement("canvas"); glowCanvas.width = W; glowCanvas.height = H;
+const gctx = glowCanvas.getContext("2d");
+let mask = null, pitch = 1;
+
+function resize() {
+  const dpr = window.devicePixelRatio || 1;
+  const cssPitch = Math.max(2, Math.floor(Math.min(innerWidth * 0.96 / W, innerHeight * 0.96 / H) * dpr) / dpr);
+  pitch = Math.round(cssPitch * dpr);
+  canvas.width = W * pitch; canvas.height = H * pitch;
+  canvas.style.width = W * pitch / dpr + "px"; canvas.style.height = H * pitch / dpr + "px";
+  mask = document.createElement("canvas"); mask.width = canvas.width; mask.height = canvas.height;
+  const m = mask.getContext("2d");
+  m.fillStyle = "#000"; m.fillRect(0, 0, mask.width, mask.height);
+  m.globalCompositeOperation = "destination-out";
+  m.beginPath();
+  const r = pitch * 0.42;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const cx = (x + 0.5) * pitch, cy = (y + 0.5) * pitch;
+    m.moveTo(cx + r, cy); m.arc(cx, cy, r, 0, Math.PI * 2);
+  }
+  m.fill();
+}
+
+function paint() {
+  // Unlit LEDs show as dim grey dots
+  if (settings.unlit) {
+    const d = pixels.data;
+    for (let i = 0; i < W * H; i++) if (!lit[i]) { const k = i * 4; d[k] = d[k + 1] = d[k + 2] = 24; d[k + 3] = 255; }
+  }
+  sctx.putImageData(pixels, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  ctx.globalCompositeOperation = "source-over";
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = "#000"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(small, 0, 0, canvas.width, canvas.height);
+  ctx.drawImage(mask, 0, 0);
+  if (settings.glow && "filter" in ctx) {
+    // Only lit LEDs glow
+    gctx.clearRect(0, 0, W, H);
+    const g = new ImageData(W, H);
+    for (let i = 0; i < W * H; i++) if (lit[i]) { const k = i * 4; g.data[k] = pixels.data[k]; g.data[k + 1] = pixels.data[k + 1]; g.data[k + 2] = pixels.data[k + 2]; g.data[k + 3] = 255; }
+    gctx.putImageData(g, 0, 0);
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = 0.45;
+    ctx.imageSmoothingEnabled = true;
+    ctx.filter = `blur(${Math.max(1, pitch * 0.6)}px)`;
+    ctx.drawImage(glowCanvas, 0, 0, canvas.width, canvas.height);
+    ctx.filter = "none";
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
+  }
+}
+
+let lastFrame = 0;
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (now - lastFrame < 50) return;  // 20 frames a second is plenty for scrolling text
+  lastFrame = now;
+  compose(Date.now());
+  paint();
+}
+
+// ---- Settings drawer, full screen, idle cursor ----
+
+const drawer = document.getElementById("drawer"), openButton = document.getElementById("open");
+function setDrawer(open) { drawer.classList.toggle("open", open); openButton.setAttribute("aria-expanded", open); }
+openButton.addEventListener("click", () => setDrawer(!drawer.classList.contains("open")));
+document.getElementById("close").addEventListener("click", () => setDrawer(false));
+for (const id of Object.keys(DEFAULTS)) {
+  const input = document.getElementById(id);
+  if (!input) continue;
+  if (input.type === "checkbox") input.checked = !!settings[id]; else input.value = settings[id];
+  input.addEventListener(input.type === "text" ? "input" : "change", () => {
+    settings[id] = input.type === "checkbox" ? input.checked : input.value;
+    if (id === "mode") showing = null;
+    document.getElementById("track-row").hidden = settings.mode !== "track";
+    save();
+  });
+}
+document.getElementById("track-row").hidden = settings.mode !== "track";
+
+const fullButton = document.getElementById("full");
+let wakeLock = null;
+fullButton.addEventListener("click", () => {
+  if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.();
+});
+document.addEventListener("fullscreenchange", async () => {
+  fullButton.textContent = document.fullscreenElement ? "Exit full screen" : "Full screen";
+  setTimeout(resize, 100);
+  // Keep the screen on while it's a display
+  try { wakeLock = document.fullscreenElement ? await navigator.wakeLock?.request("screen") : (wakeLock?.release(), null); } catch (e) { wakeLock = null; }
+});
+
+let idleTimer = 0;
+function wake() {
+  document.body.classList.remove("idle-cursor");
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => { if (!drawer.classList.contains("open")) document.body.classList.add("idle-cursor"); }, 3000);
+}
+["mousemove", "touchstart", "keydown"].forEach(e => addEventListener(e, wake, {passive: true}));
+addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+  if (e.key === "s") setDrawer(!drawer.classList.contains("open"));
+  if (e.key === "f") fullButton.click();
+  if (e.key === "Escape") setDrawer(false);
+});
+addEventListener("resize", resize);
+
+resize();
+wake();
+loadReceiver().then(poll);
+setInterval(poll, 1000);
+setInterval(loadReceiver, 600000);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

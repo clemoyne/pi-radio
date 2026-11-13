@@ -1,0 +1,14 @@
+[Unit]
+Description=Set weather satellite pass timers again after a reboot
+Wants=network-online.target time-sync.target
+After=network-online.target time-sync.target mnt-data.mount
+
+[Service]
+Type=oneshot
+User=pi
+ExecStart=/usr/bin/python3 /mnt/data/satwx/app/satwx.py restore
+StandardOutput=append:/mnt/data/satwx/satwx.log
+StandardError=append:/mnt/data/satwx/satwx.log
+
+[Install]
+WantedBy=multi-user.target

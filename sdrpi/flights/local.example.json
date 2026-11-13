@@ -1,0 +1,4 @@
+{
+  "_comment": "Copy to local.json (not published) and set the receiver's position, as in garage_pi's /run/dump1090-fa/receiver.json. Used for flights over the house and to tell nearby airports from distant ones.",
+  "home": [43.6532, -79.3832]
+}

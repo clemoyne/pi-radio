@@ -1,0 +1,27 @@
+[Unit]
+Description=Pi health checks for the Status page and alert banner
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+ExecStart=/usr/bin/python3 -I /opt/pistatus/pistatus.py /opt/pistatus/config.json
+Restart=always
+RestartSec=30
+# Not DynamicUser: on systemd 241 a dynamic user is refused service and clock state over D-Bus
+User=pi
+NoNewPrivileges=yes
+StateDirectory=pistatus
+RuntimeDirectory=pistatus
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=restart
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+Nice=10
+IOSchedulingClass=idle
+CPUQuota=10%
+OOMScoreAdjust=800
+LimitAS=192M
+
+[Install]
+WantedBy=multi-user.target

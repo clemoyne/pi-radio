@@ -1,0 +1,11 @@
+[Unit]
+Description=Porch versus attic reception report
+RequiresMountsFor=/mnt/data
+
+[Service]
+Type=oneshot
+User=pi
+SupplementaryGroups=systemd-journal adm
+ExecStart=/usr/bin/python3 -I /mnt/data/comparison/compare.py
+StandardOutput=append:/mnt/data/logs/attic-compare.log
+StandardError=append:/mnt/data/logs/attic-compare.log

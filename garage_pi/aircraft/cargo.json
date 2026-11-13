@@ -1,0 +1,24 @@
+{
+  "_comment": "Shared by garage_pi's aircraft log and sdrpi's flight store; keep both copies the same. A flight is cargo if its callsign prefix is listed, its registered owner matches, or the registry model is a Boeing, Airbus or McDonnell Douglas freighter. Tail numbers alone aren't used: N...UP is also Wheels Up's private jets.",
+  "callsigns": {
+    "UPS": "UPS Airlines", "FDX": "FedEx Express", "CJT": "Cargojet", "MAL": "Morningstar Air Express (FedEx)",
+    "MTN": "Mountain Air Cargo (FedEx)", "CFS": "Empire Airlines (FedEx)", "IRO": "CSA Air (FedEx)", "WIG": "Wiggins Airways (FedEx)",
+    "BOX": "AeroLogic (DHL)", "DHK": "DHL Air UK", "BCS": "European Air Transport (DHL)", "DHX": "DHL Aero Expreso",
+    "GTI": "Atlas Air", "ABX": "ABX Air", "ATN": "Air Transport International", "CKS": "Kalitta Air", "KFS": "Kalitta Charters",
+    "PAC": "Polar Air Cargo", "SOO": "Southern Air", "WGN": "Western Global Airlines", "AJT": "Amerijet", "KYE": "Sky Lease Cargo",
+    "AMF": "Ameriflight", "KFA": "KF Cargo", "RAX": "Royal Air Freight", "CLX": "Cargolux", "ICV": "Cargolux Italia",
+    "GEC": "Lufthansa Cargo", "MPH": "Martinair Cargo", "ABW": "AirBridgeCargo", "CKK": "China Cargo Airlines",
+    "CAO": "Air China Cargo", "CSS": "SF Airlines", "TPA": "Avianca Cargo", "LCO": "LATAM Cargo", "NPT": "West Atlantic"
+  },
+  "owners": [
+    ["united parcel service", "UPS Airlines"], ["federal express|\\bfedex\\b", "FedEx Express"], ["cargojet", "Cargojet"],
+    ["morningstar air express", "Morningstar Air Express (FedEx)"], ["mountain air cargo", "Mountain Air Cargo (FedEx)"],
+    ["\\batlas air\\b", "Atlas Air"], ["kalitta", "Kalitta"], ["\\bamazon\\b", "Amazon Air"], ["\\babx air\\b", "ABX Air"],
+    ["air transport international", "Air Transport International"], ["cargo aircraft management", "ATSG (Cargo Aircraft Management)"],
+    ["royal air freight", "Royal Air Freight"], ["polar air cargo", "Polar Air Cargo"], ["western global", "Western Global Airlines"],
+    ["amerijet", "Amerijet"], ["ameriflight", "Ameriflight"], ["\\bdhl\\b", "DHL"], ["sky lease", "Sky Lease Cargo"],
+    ["kf cargo|kelowna flightcraft", "KF Cargo"], ["\\bcargo\\b|\\bfreight\\b", null]
+  ],
+  "freighter_makes": "^(boeing|airbus|mcdonnell)",
+  "freighter_models": "(\\d[A-Z0-9]*F$|-F[A-Z0-9]+$|\\b(P2F|BCF|BDSF)\\b)"
+}

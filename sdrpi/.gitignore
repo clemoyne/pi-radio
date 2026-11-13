@@ -1,0 +1,19 @@
+.DS_Store
+__pycache__/
+*.pyc
+
+# Rebuilt by bluetooth/build_ids.py; wifi/ids.db is a copy of the same file
+*.db
+
+# Reference documents, only read by hand
+*.pdf
+
+# RadioReference exports and the channel list built from them: their terms don't allow redistributing it
+Toronto.csv
+GTA_Frequencies_Full_List.csv
+scanner/channels.json
+
+# Personal details, kept off GitHub
+local.json
+places.json
+CLAUDE.local.md

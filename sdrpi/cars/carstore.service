@@ -1,0 +1,22 @@
+[Unit]
+Description=Car counter store fed by porch_pi's tire sensor decodes
+After=network-online.target
+RequiresMountsFor=/mnt/data
+StartLimitIntervalSec=0
+
+[Service]
+User=pi
+NoNewPrivileges=yes
+ExecStart=/usr/bin/python3 -I /mnt/data/cars/app/carstore.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/mnt/data/logs/carstore.log
+StandardError=append:/mnt/data/logs/carstore.log
+ReadWritePaths=/mnt/data/cars /mnt/data/weather
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+Nice=5
+
+[Install]
+WantedBy=multi-user.target

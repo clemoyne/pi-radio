@@ -1,0 +1,8 @@
+[Unit]
+Description=Watch for reboot or shutdown requests from the Status page
+
+[Path]
+PathExists=/run/pistatus/power-request
+
+[Install]
+WantedBy=paths.target

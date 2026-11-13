@@ -1,0 +1,6 @@
+[Unit]
+Description=Reboot or shut down when the Status page asks
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh /usr/local/lib/pistatus/power-action.sh

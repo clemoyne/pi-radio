@@ -1,0 +1,23 @@
+{
+  "_about": "VIP aircraft: each rule's fields (hex, reg, callsign, type, operator, tags) are regular expressions that must all match; the first rule that matches gives the label. reg is compared without dashes or spaces. Who is aboard is never broadcast, so labels say who the aircraft is used for. Changing this file relabels every stored flight on the next start.",
+  "rules": [
+    {"reg": "^15001$", "label": "RCAF CC-150 Polaris 15001, the Prime Minister's long-range aircraft"},
+    {"hex": "^c2b355$", "label": "RCAF CC-150 Polaris 15001, the Prime Minister's long-range aircraft"},
+    {"reg": "^3300\\d\\d$", "label": "RCAF CC-330 Husky, which flies the Prime Minister, the Governor General and the Royal Family"},
+    {"hex": "^(c2c363|c2c36d)$", "label": "RCAF CC-330 Husky, which flies the Prime Minister, the Governor General and the Royal Family"},
+    {"callsign": "^CFC\\d", "type": "A33|A332|CC-330|Husky", "label": "RCAF CC-330 Husky, which flies the Prime Minister, the Governor General and the Royal Family"},
+    {"reg": "^1446(1[4-9]|20)$", "label": "RCAF CC-144 Challenger (412 Squadron), the VIP jet for the Prime Minister, the Governor General, ministers and royal visits"},
+    {"hex": "^(c2b369|c2b373|c2c1f1|c2c1fb)$", "label": "RCAF CC-144 Challenger (412 Squadron), the VIP jet for the Prime Minister, the Governor General, ministers and royal visits"},
+    {"callsign": "^KRF", "label": "The Royal Flight (callsign Kittyhawk), carrying members of the Royal Family"},
+    {"reg": "^ZZ336$", "label": "RAF Voyager ZZ336, the UK government's VIP aircraft for the Prime Minister and the Royal Family"},
+    {"reg": "^ZE39[56]$|^ZZ50[34]$", "label": "RAF Envoy, the Royal Squadron's VIP jet"},
+    {"hex": "^(adfdf8|adfdf9|af83f3)$", "label": "Air Force One (VC-25), the US President's aircraft"},
+    {"reg": "^(828000|929000|253300)$", "label": "Air Force One (VC-25), the US President's aircraft"},
+    {"callsign": "^(AF1|AF2|EXEC1F)$", "label": "US presidential or vice-presidential flight"},
+    {"callsign": "^SAM\\d", "label": "US Special Air Mission: the Vice President, cabinet members or Congress"},
+    {"operator": "Royal Flight|Royal Squadron|Presidential|Head of State|Royal Household", "label": "Head of state or royal aircraft"},
+    {"operator": "^Government of (?!Canada|Qu[eé]bec|Ontario|Alberta|British Columbia|Manitoba|Saskatchewan|Nova Scotia|New Brunswick|Newfoundland|Prince Edward|Yukon|Northwest|Nunavut)", "label": "Foreign government aircraft, used by its head of state or ministers"},
+    {"tags": "Royal Flight|Royal Family|Air Force One|POTUS|Head of State|Prime Minister|President", "label": "Head of state or royal aircraft"},
+    {"tags": "VIP", "label": "VIP transport"}
+  ]
+}

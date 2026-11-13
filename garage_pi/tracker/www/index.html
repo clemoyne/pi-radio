@@ -1,0 +1,614 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="/favicon.ico?v=2"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bluetooth Tracker</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #6f6d68;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11,11,11,0.10);
+  --series: #2a78d6;
+  --series-2: #eb6834;
+  --neutral: #898781;
+  --good: #0ca30c;
+  --warn: #fab219;
+  --wash: rgba(42,120,214,0.10);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #f0efec;
+    --ink-2: #c3c2b7;
+    --muted: #989690;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255,255,255,0.10);
+    --series: #3987e5;
+    --series-2: #d95926;
+    --wash: rgba(57,135,229,0.16);
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1120px; margin: 0 auto; padding: 24px 16px 48px; display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; }
+h1 { font-size: 22px; margin: 0; font-weight: 600; }
+h2 { font-size: 15px; margin: 0; font-weight: 600; }
+.note { color: var(--muted); font-size: 12.5px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; min-width: 0; }
+.card > .note { margin: 2px 0 12px; }
+.banner { display: none; background: var(--surface); border: 1px solid var(--warn); border-radius: 10px; padding: 10px 14px; }
+.banner.show { display: block; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(138px, 1fr)); gap: 12px; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; }
+.tile b { display: block; font-size: 28px; font-weight: 600; line-height: 1.2; }
+.tile span { color: var(--ink-2); font-size: 13px; }
+.filters { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+.filters input[type=search], .filters select { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--axis); border-radius: 6px; padding: 6px 8px; min-height: 36px; }
+.filters input[type=search] { flex: 1 1 200px; min-width: 0; }
+.filters label { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); min-height: 36px; }
+#hourly { position: relative; }
+#hourly svg { display: block; width: 100%; }
+.tl-row { display: grid; grid-template-columns: minmax(90px, 200px) minmax(0, 1fr); gap: 12px; align-items: center; min-height: 26px; }
+.tl-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ink-2); font-size: 13px; }
+.tl-track { position: relative; height: 26px; background-image: linear-gradient(var(--grid), var(--grid)); background-size: 100% 1px; background-position: 0 50%; background-repeat: no-repeat; }
+.tl-span { position: absolute; top: 0; height: 26px; min-width: 6px; padding: 0; border: 0; background: transparent; cursor: default; }
+.tl-span::after { content: ""; position: absolute; left: 0; right: 0; top: 9px; height: 8px; border-radius: 4px; background: var(--series); }
+.tl-span:hover::after, .tl-span:focus::after { box-shadow: 0 0 0 2px var(--wash); }
+.tl-span:focus { outline: none; }
+.tl-axis { position: relative; height: 18px; margin-left: calc(min(200px, 30%) + 12px); }
+.tl-axis span { position: absolute; transform: translateX(-50%); color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tl-axis span:first-child { transform: none; }
+.tl-axis span:last-child { transform: translateX(-100%); }
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th { text-align: left; font-weight: 500; font-size: 12.5px; color: var(--ink-2); padding: 6px 10px; border-bottom: 1px solid var(--axis); white-space: nowrap; }
+th button { all: unset; cursor: pointer; }
+th button:focus-visible { outline: 2px solid var(--series); outline-offset: 2px; }
+td { padding: 8px 10px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+td.mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px; white-space: nowrap; }
+td.num, th.num { text-align: right; }
+.status { white-space: nowrap; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; border: 1.5px solid var(--axis); }
+.dot.here { background: var(--good); border-color: var(--good); }
+.sub { color: var(--muted); font-size: 12.5px; }
+.nowrap { white-space: nowrap; }
+.conf { color: var(--ink-2); }
+.events { list-style: none; margin: 0; padding: 0; max-height: 340px; overflow-y: auto; }
+.events li { display: grid; grid-template-columns: 64px 62px minmax(0, 1fr); gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--grid); }
+.events time { color: var(--muted); font-variant-numeric: tabular-nums; }
+.events .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+details summary { cursor: pointer; color: var(--ink-2); font-size: 13px; margin-top: 10px; }
+#tip { position: fixed; z-index: 10; pointer-events: none; display: none; background: var(--surface); color: var(--ink); border: 1px solid var(--axis); border-radius: 6px; padding: 6px 9px; font-size: 12.5px; max-width: 280px; box-shadow: 0 2px 8px rgba(0,0,0,0.18); }
+#tip b { font-weight: 600; }
+.empty { color: var(--muted); padding: 8px 0; }
+.radar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 300px); gap: 20px; align-items: start; }
+#radar { min-width: 0; }
+#radar svg { display: block; width: 100%; }
+.radar-mark { cursor: pointer; outline: none; }
+.radar-mark:focus-visible .radar-focus, .radar-mark:hover .radar-focus { stroke: var(--ink); }
+.radar-side h3 { font-size: 13px; font-weight: 600; margin: 14px 0 4px; }
+.legend { display: grid; gap: 4px; color: var(--ink-2); font-size: 12.5px; }
+.legend div { display: flex; align-items: center; gap: 8px; }
+.legend svg { flex: none; }
+.bands { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; font-size: 12.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.detail { margin: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 10px; font-size: 13px; }
+.detail dt { color: var(--muted); }
+.detail dd { margin: 0; overflow-wrap: anywhere; }
+.detail-title { font-weight: 600; font-size: 14px; overflow-wrap: anywhere; }
+.closest { list-style: none; margin: 0; padding: 0; }
+.closest button { all: unset; box-sizing: border-box; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; width: 100%; min-height: 28px; align-items: center; cursor: pointer; border-radius: 4px; padding: 2px 4px; font-size: 13px; }
+.closest button:hover, .closest button.sel { background: var(--wash); }
+.closest button:focus-visible { outline: 2px solid var(--series); }
+.closest .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.closest .val { color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+@media (max-width: 720px) { .radar { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Bluetooth Tracker</h1>
+    <span class="note"><a href="/skyaware/" style="color:var(--series)">SkyAware</a> · <a href="/aircraft/" style="color:var(--series)">Aircraft log</a> · <a href="http://sdrpi.local:8080/flights/" style="color:var(--series)">Flights</a> · <a href="http://sdrpi.local:8080/weather/" style="color:var(--series)">Weather</a> · <a href="/status/" style="color:var(--series)">Status</a> · <a href="http://sdrpi.local:8080/" style="color:var(--series)">sdrpi</a> · <span id="updated">Loading…</span></span>
+  </header>
+  <div class="banner" id="banner" role="status"></div>
+
+  <section class="tiles" aria-label="Summary">
+    <div class="tile"><b id="t-here">–</b><span>Here now</span></div>
+    <div class="tile"><b id="t-known">–</b><span>Known devices</span></div>
+    <div class="tile"><b id="t-new">–</b><span>New in 24 hours</span></div>
+    <div class="tile"><b id="t-arrivals">–</b><span>Arrivals in 24 hours</span></div>
+    <div class="tile"><b id="t-filtered">–</b><span>Rotating broadcasts ignored, 24 hours</span></div>
+    <div class="tile"><b id="t-boot">–</b><span>Pi uptime since boot</span></div>
+    <div class="tile"><b id="t-total">–</b><span id="t-total-note">Total Pi uptime</span></div>
+  </section>
+
+  <section class="card">
+    <h2>Devices nearby</h2>
+    <p class="note">Distinct tracked devices heard in each hour, last 24 hours</p>
+    <div id="hourly"></div>
+    <details><summary>Show as table</summary><div class="scroll"><table id="hourly-table"></table></div></details>
+  </section>
+
+  <section class="card">
+    <h2>Untrackable devices by manufacturer</h2>
+    <p class="note">Rough estimates. When an address goes quiet and a similar one from the same manufacturer starts right after, they count as one device. Addresses and links stay in memory for about two hours; only these totals are saved.</p>
+    <div class="scroll"><table id="vendors"></table></div>
+  </section>
+
+  <section class="filters" aria-label="Filters">
+    <input type="search" id="q" placeholder="Search name, vendor or address" aria-label="Search devices">
+    <select id="cat" aria-label="Category"><option value="">All categories</option></select>
+    <select id="move" aria-label="Movement">
+      <option value="">All movement</option>
+      <option value="fixed">Fixed</option>
+      <option value="likely_fixed">Likely fixed</option>
+      <option value="moves">Likely moves</option>
+      <option value="unknown">Not sure yet</option>
+    </select>
+    <label><input type="checkbox" id="here-only"> Here now only</label>
+    <label><input type="checkbox" id="hide-once" checked> Hide devices heard only once</label>
+  </section>
+
+  <section class="card">
+    <h2>Nearby map</h2>
+    <p class="note" id="radar-note">Devices heard in the last hour. Closer to the center means a stronger signal at the Pi. Bluetooth signal can't show direction, so the angle only groups devices by category.</p>
+    <div class="radar">
+      <div id="radar"></div>
+      <div class="radar-side">
+        <div class="legend" id="radar-legend"></div>
+        <h3>Selected device</h3>
+        <div id="radar-detail"></div>
+        <h3>Closest now</h3>
+        <ol class="closest" id="radar-closest"></ol>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Presence</h2>
+    <p class="note" id="tl-note">When each device was within range, last 24 hours</p>
+    <div id="timeline"></div>
+  </section>
+
+  <section class="card">
+    <h2>Devices</h2>
+    <p class="note" id="dev-note"></p>
+    <div class="scroll"><table id="devices"></table></div>
+  </section>
+
+  <section class="card">
+    <h2>Recent activity</h2>
+    <p class="note">A device counts as gone after 15 minutes of silence</p>
+    <ul class="events" id="events"></ul>
+  </section>
+</main>
+<div id="tip" role="tooltip"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const fmt = new Intl.NumberFormat();
+const SVG = "http://www.w3.org/2000/svg";
+let data = null, sortKey = "last_seen", sortDir = -1;
+
+// Device names are broadcast by anything in radio range, so data only ever goes in via textContent.
+function el(tag, attrs, ...kids) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === "class") node.className = v; else node.setAttribute(k, v);
+  }
+  for (const kid of kids) {
+    if (kid !== null && kid !== undefined) node.append(kid);
+  }
+  return node;
+}
+function svg(tag, attrs, text) {
+  const node = document.createElementNS(SVG, tag);
+  for (const [k, v] of Object.entries(attrs || {})) node.setAttribute(k, v);
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+function clock(t) { return new Date(t * 1000).toLocaleTimeString([], {hour: "numeric", minute: "2-digit"}); }
+function stamp(t) { return new Date(t * 1000).toLocaleString([], {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"}); }
+function hourLabel(t) { return new Date(t * 1000).toLocaleTimeString([], {hour: "numeric"}); }
+function ago(t) {
+  const s = Math.max(0, data.generated - t);
+  if (s < 90) return "just now";
+  if (s < 5400) return Math.round(s / 60) + " min ago";
+  if (s < 129600) return Math.round(s / 3600) + " hr ago";
+  return Math.round(s / 86400) + " days ago";
+}
+function duration(s) {
+  if (s < 60) return "under a minute";
+  if (s < 5400) return Math.round(s / 60) + " min";
+  return (s / 3600).toFixed(1) + " hr";
+}
+
+function showTip(html, x, y) {
+  const tip = $("tip");
+  tip.replaceChildren(...html);
+  tip.style.display = "block";
+  const r = tip.getBoundingClientRect();
+  tip.style.left = Math.max(8, Math.min(x + 12, innerWidth - r.width - 8)) + "px";
+  tip.style.top = Math.max(8, Math.min(y - r.height - 10, innerHeight - r.height - 8)) + "px";
+}
+function hideTip() { $("tip").style.display = "none"; }
+
+function renderHourly() {
+  const box = $("hourly");
+  const width = Math.max(280, box.clientWidth);
+  const height = 190, m = {t: 10, r: 12, b: 24, l: 32};
+  const pts = data.hourly;
+  const max = Math.max(4, ...pts.map(p => p.devices));
+  const step = Math.ceil(max / 4);
+  const top = step * 4;
+  const x = i => m.l + i * (width - m.l - m.r) / (pts.length - 1);
+  const y = v => height - m.b - v * (height - m.t - m.b) / top;
+  const root = svg("svg", {viewBox: `0 0 ${width} ${height}`, height, role: "img",
+    "aria-label": "Line chart of tracked devices heard per hour over the last 24 hours"});
+  for (let v = 0; v <= top; v += step) {
+    root.append(svg("line", {x1: m.l, x2: width - m.r, y1: y(v), y2: y(v), stroke: v ? "var(--grid)" : "var(--axis)"}));
+    root.append(svg("text", {x: m.l - 6, y: y(v) + 4, "text-anchor": "end", "font-size": 11.5, fill: "var(--muted)", style: "font-variant-numeric:tabular-nums"}, v));
+  }
+  const every = width < 520 ? 6 : 3;
+  pts.forEach((p, i) => {
+    if (i % every === 0) root.append(svg("text", {x: x(i), y: height - 7, "text-anchor": i ? "middle" : "start", "font-size": 11.5, fill: "var(--muted)"}, hourLabel(p.t)));
+  });
+  root.append(svg("polyline", {points: pts.map((p, i) => `${x(i)},${y(p.devices)}`).join(" "), fill: "none", stroke: "var(--series)", "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round"}));
+  const last = pts.length - 1;
+  root.append(svg("circle", {cx: x(last), cy: y(pts[last].devices), r: 4, fill: "var(--series)", stroke: "var(--surface)", "stroke-width": 2}));
+  const cross = svg("line", {y1: m.t, y2: height - m.b, stroke: "var(--axis)", visibility: "hidden"});
+  const dot = svg("circle", {r: 4, fill: "var(--series)", stroke: "var(--surface)", "stroke-width": 2, visibility: "hidden"});
+  root.append(cross, dot);
+  const hit = svg("rect", {x: m.l, y: 0, width: width - m.l - m.r, height: height - m.b, fill: "transparent", tabindex: 0, "aria-label": "Hourly values; use the table below for exact numbers"});
+  root.append(hit);
+  const move = e => {
+    const rect = root.getBoundingClientRect();
+    const i = Math.max(0, Math.min(last, Math.round((e.clientX - rect.left - m.l) / (width - m.l - m.r) * last)));
+    cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i)); cross.setAttribute("visibility", "visible");
+    dot.setAttribute("cx", x(i)); dot.setAttribute("cy", y(pts[i].devices)); dot.setAttribute("visibility", "visible");
+    showTip([el("b", null, String(pts[i].devices)), " devices", el("br"), hourLabel(pts[i].t) + " hour"], e.clientX, e.clientY);
+  };
+  hit.addEventListener("pointermove", move);
+  hit.addEventListener("pointerleave", () => { cross.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); hideTip(); });
+  box.replaceChildren(root);
+
+  const rows = pts.map(p => el("tr", null, el("td", null, hourLabel(p.t)), el("td", {class: "num"}, String(p.devices))));
+  $("hourly-table").replaceChildren(el("tr", null, el("th", null, "Hour"), el("th", {class: "num"}, "Devices")), ...rows);
+}
+
+function filtered() {
+  const q = $("q").value.trim().toLowerCase();
+  const cat = $("cat").value;
+  return data.devices.filter(d => {
+    if (cat && d.category !== cat) return false;
+    if ($("move").value && d.mobility !== $("move").value) return false;
+    if ($("here-only").checked && !d.here) return false;
+    if ($("hide-once").checked && d.reports <= 1) return false;
+    if (q && ![d.label, d.name, d.mac, d.category, d.evidence].some(v => v && v.toLowerCase().includes(q))) return false;
+    return true;
+  });
+}
+
+function renderTimeline(devices) {
+  const allowed = new Set(devices.map(d => d.mac));
+  const rows = data.timeline.filter(r => allowed.has(r.mac));
+  const box = $("timeline");
+  if (!rows.length) { box.replaceChildren(el("div", {class: "empty"}, "No matching devices in the last 24 hours.")); return; }
+  const end = data.generated, start = end - 86400;
+  const pct = t => Math.max(0, Math.min(100, (t - start) / 864));
+  const nameFor = Object.fromEntries(data.devices.map(d => [d.mac, d.name]));
+  const out = rows.map(r => {
+    const track = el("div", {class: "tl-track"});
+    r.sessions.forEach(([s, e]) => {
+      const span = el("button", {class: "tl-span", type: "button", style: `left:${pct(s)}%;width:${Math.max(0, pct(e) - pct(s))}%`,
+        "aria-label": `${r.label}: ${stamp(s)} to ${stamp(e)}`});
+      const tip = ev => {
+        const box2 = span.getBoundingClientRect();
+        showTip([el("b", null, r.label), el("br"), `${clock(s)} – ${clock(e)}`, el("br"), duration(e - s)],
+          ev.clientX || box2.left, ev.clientY || box2.top);
+      };
+      span.addEventListener("pointermove", tip);
+      span.addEventListener("focus", tip);
+      span.addEventListener("pointerleave", hideTip);
+      span.addEventListener("blur", hideTip);
+      track.append(span);
+    });
+    const shown = nameFor[r.mac] ? `${nameFor[r.mac]} · ${r.label}` : `${r.label} · ${r.mac.slice(-5)}`;
+    return el("div", {class: "tl-row"}, el("div", {class: "tl-name", title: shown}, shown), track);
+  });
+  const axis = el("div", {class: "tl-axis"});
+  for (let h = 0; h <= 24; h += 6) {
+    const label = h === 24 ? "now" : hourLabel(start + h * 3600);
+    axis.append(el("span", {style: `left:${h / 24 * 100}%`}, label));
+  }
+  box.replaceChildren(...out, axis);
+}
+
+const RADAR_WINDOW = 3600;
+const BANDS = ["Very close", "Nearby", "In or near the building", "Edge of range"];
+const RADAR_STOPS = [[-40, 0.05], [-60, 0.25], [-75, 0.5], [-90, 0.75], [-100, 1]];
+let radarSelected = null;
+
+function radarFraction(rssi) {
+  const value = Math.max(-100, Math.min(-40, rssi));
+  for (let i = 1; i < RADAR_STOPS.length; i++) {
+    const [a, fa] = RADAR_STOPS[i - 1], [b, fb] = RADAR_STOPS[i];
+    if (value >= b) return fa + (a - value) / (a - b) * (fb - fa);
+  }
+  return 1;
+}
+function hashMac(mac) {
+  let h = 2166136261;
+  for (const c of mac) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); }
+  return (h >>> 0) / 4294967296;
+}
+function moveStyle(d) {
+  if (d.mobility === "moves") return {color: "var(--series-2)", shape: "diamond"};
+  if (d.mobility === "unknown") return {color: "var(--neutral)", shape: "square"};
+  return {color: "var(--series)", shape: "circle"};
+}
+function radarMark(shape, x, y, size, attrs) {
+  if (shape === "circle") return svg("circle", {cx: x, cy: y, r: size, ...attrs});
+  if (shape === "square") return svg("rect", {x: x - size * 0.85, y: y - size * 0.85, width: size * 1.7, height: size * 1.7, rx: 1.5, ...attrs});
+  return svg("path", {d: `M${x} ${y - size * 1.25}L${x + size * 1.25} ${y}L${x} ${y + size * 1.25}L${x - size * 1.25} ${y}Z`, ...attrs});
+}
+function displayName(d) { return d.name || d.label; }
+function radarTip(d) {
+  return [el("b", null, displayName(d)), el("br"), d.band + (d.rssi === null ? "" : ` · ${d.rssi} dBm`), el("br"), d.mobility_label + (d.here ? " · here now" : ` · last heard ${ago(d.last_seen)}`)];
+}
+
+function renderRadar(devices) {
+  const recent = devices.filter(d => d.rssi !== null && data.generated - d.last_seen <= RADAR_WINDOW);
+  const box = $("radar");
+  if (!recent.length) {
+    box.replaceChildren(el("div", {class: "empty"}, "No matching devices heard in the last hour."));
+    $("radar-legend").replaceChildren(); $("radar-detail").replaceChildren(); $("radar-closest").replaceChildren();
+    return;
+  }
+  const size = Math.min(620, Math.max(280, box.clientWidth));
+  const narrow = size < 520;
+  const margin = narrow ? 72 : 78;
+  const c = size / 2, R = c - margin;
+  const root = svg("svg", {viewBox: `0 0 ${size} ${size}`, height: size, role: "group", "aria-label": `Map of ${recent.length} recently heard devices by signal strength`});
+
+  [1, 0.75, 0.5, 0.25].forEach((f, i) => root.append(svg("circle", {cx: c, cy: c, r: R * f, fill: i % 2 ? "var(--wash)" : "none", "fill-opacity": 0.45, stroke: "var(--grid)"})));
+
+  const byCategory = {};
+  recent.forEach(d => (byCategory[d.category] = byCategory[d.category] || []).push(d));
+  const categories = Object.keys(byCategory).sort();
+  const weight = categories.reduce((sum, k) => sum + byCategory[k].length + 2, 0);
+  const labelGap = 0.42;  // empty wedge at the top keeps the band labels clear of the marks
+  let angle = -Math.PI / 2 + labelGap / 2;
+  const placed = [];
+  categories.forEach(category => {
+    const members = byCategory[category];
+    const span = (members.length + 2) / weight * (Math.PI * 2 - labelGap);
+    if (categories.length > 1) root.append(svg("line", {x1: c, y1: c, x2: c + R * Math.cos(angle), y2: c + R * Math.sin(angle), stroke: "var(--grid)"}));
+    const mid = angle + span / 2, lx = c + (R + 10) * Math.cos(mid), ly = c + (R + 10) * Math.sin(mid);
+    const limit = narrow ? 8 : 15;
+    const short = category.length > limit ? category.slice(0, limit - 1) + "…" : category;
+    root.append(svg("text", {x: lx, y: ly + 4, "text-anchor": Math.abs(Math.cos(mid)) < 0.25 ? "middle" : Math.cos(mid) > 0 ? "start" : "end", "font-size": 11.5, fill: "var(--ink-2)"}, `${short} ${members.length}`));
+    const pad = Math.min(0.12, span * 0.12);
+    members.forEach(d => {
+      const theta = angle + pad + hashMac(d.mac) * (span - pad * 2);
+      const r = radarFraction(d.rssi) * R;
+      placed.push({d, x: c + r * Math.cos(theta), y: c + r * Math.sin(theta)});
+    });
+    angle += span;
+  });
+  if (categories.length > 1) root.append(svg("line", {x1: c, y1: c, x2: c + R * Math.cos(angle), y2: c + R * Math.sin(angle), stroke: "var(--grid)"}));
+
+  [["Very close", 0.125], ["Nearby", 0.375], ["In or near the building", 0.625], ["Edge of range", 0.875]].forEach(([label, f]) => {
+    root.append(svg("text", {x: c, y: c - R * f + 4, "text-anchor": "middle", "font-size": 10.5, fill: "var(--muted)", style: "paint-order:stroke;stroke:var(--surface);stroke-width:3px"}, narrow && label.length > 14 ? "Building" : label));
+  });
+  root.append(svg("circle", {cx: c, cy: c, r: 4, fill: "var(--ink)"}));
+  root.append(svg("text", {x: c, y: c + 16, "text-anchor": "middle", "font-size": 11, "font-weight": 600, fill: "var(--ink)", style: "paint-order:stroke;stroke:var(--surface);stroke-width:3px"}, "Pi"));
+
+  const closest = [...recent].sort((a, b) => b.rssi - a.rssi);
+  if (!recent.some(d => d.mac === radarSelected)) radarSelected = closest[0].mac;
+  const select = mac => { radarSelected = mac; renderRadar(filtered()); };
+
+  placed.sort((a, b) => (a.d.mac === radarSelected) - (b.d.mac === radarSelected)).forEach(({d, x, y}) => {
+    const {color, shape} = moveStyle(d);
+    const g = svg("g", {class: "radar-mark", tabindex: 0, role: "button", "aria-label": `${displayName(d)}, ${d.band}, ${d.mobility_label}`});
+    if (d.mac === radarSelected) g.append(svg("circle", {cx: x, cy: y, r: 10, fill: "none", stroke: "var(--ink)", "stroke-width": 1.5}));
+    g.append(radarMark(shape, x, y, 5, d.here
+      ? {fill: color, stroke: "var(--surface)", "stroke-width": 2, class: "radar-focus-off"}
+      : {fill: "var(--surface)", stroke: color, "stroke-width": 2}));
+    g.append(svg("circle", {cx: x, cy: y, r: 13, fill: "transparent"}));
+    g.addEventListener("pointermove", e => showTip(radarTip(d), e.clientX, e.clientY));
+    g.addEventListener("pointerleave", hideTip);
+    g.addEventListener("focus", () => { const b = g.getBoundingClientRect(); showTip(radarTip(d), b.left + b.width / 2, b.top); });
+    g.addEventListener("blur", hideTip);
+    g.addEventListener("click", () => { hideTip(); select(d.mac); });
+    g.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(d.mac); } });
+    root.append(g);
+  });
+  box.replaceChildren(root);
+
+  const counts = group => recent.filter(group).length;
+  const swatch = (shape, color, hollow) => {
+    const s = svg("svg", {width: 16, height: 16, viewBox: "0 0 16 16", "aria-hidden": "true"});
+    s.append(radarMark(shape, 8, 8, 4.5, hollow ? {fill: "none", stroke: color, "stroke-width": 2} : {fill: color}));
+    return s;
+  };
+  const fixedCount = counts(d => d.mobility === "fixed" || d.mobility === "likely_fixed");
+  $("radar-legend").replaceChildren(
+    el("div", null, swatch("circle", "var(--series)"), `Fixed or likely fixed: ${fixedCount}`),
+    el("div", null, swatch("diamond", "var(--series-2)"), `Likely moves: ${counts(d => d.mobility === "moves")}`),
+    el("div", null, swatch("square", "var(--neutral)"), `Not sure yet: ${counts(d => d.mobility === "unknown")}`),
+    el("div", null, swatch("circle", "var(--neutral)", true), `Hollow: not heard in 15 minutes (${counts(d => !d.here)})`),
+    el("div", {class: "bands", style: "display:grid;margin-top:6px"}, ...BANDS.flatMap(band => [el("span", null, band), el("span", null, String(counts(d => d.band === band)))])));
+
+  const s = recent.find(d => d.mac === radarSelected);
+  const row = (term, value) => [el("dt", null, term), el("dd", null, value)];
+  $("radar-detail").replaceChildren(
+    el("div", {class: "detail-title"}, displayName(s)),
+    el("dl", {class: "detail"},
+      ...(s.name ? row("Type", s.label) : []),
+      ...row("Category", s.category),
+      ...row("Distance", s.band + ` (${s.rssi} dBm)`),
+      ...(s.trend ? row("Trend", s.trend) : []),
+      ...row("Movement", `${s.mobility_label}, ${s.mobility_basis}`),
+      ...row("Status", s.here ? "Here now" : `Last heard ${ago(s.last_seen)}`),
+      ...row("First seen", stamp(s.first_seen)),
+      ...row("Visits", fmt.format(s.visits)),
+      ...row("Address", s.mac),
+      ...row("Identified by", `${s.evidence} (${s.confidence} confidence)`)));
+
+  $("radar-closest").replaceChildren(...closest.slice(0, 6).map(d => {
+    const button = el("button", {type: "button", class: d.mac === radarSelected ? "sel" : ""},
+      el("span", {class: "who"}, displayName(d)),
+      el("span", {class: "val"}, (d.trend ? (d.trend === "Getting closer" ? "↑ " : "↓ ") : "") + `${d.rssi} dBm`));
+    button.addEventListener("click", () => select(d.mac));
+    return el("li", null, button);
+  }));
+}
+
+const COLUMNS = [
+  ["here", "Status"], ["label", "Device"], ["category", "Category"], ["mac", "Address"],
+  ["rssi", "Distance"], ["mobility_label", "Movement"], ["first_seen", "First seen"], ["last_seen", "Last seen"], ["visits", "Visits", "num"],
+];
+
+function renderDevices(devices) {
+  const sorted = [...devices].sort((a, b) => {
+    const x = a[sortKey], y = b[sortKey];
+    if (x === y) return b.last_seen - a.last_seen;
+    if (x === null || x === undefined) return 1;
+    if (y === null || y === undefined) return -1;
+    return (x > y ? 1 : -1) * sortDir;
+  });
+  const head = el("tr", null, ...COLUMNS.map(([key, label, cls]) => {
+    const button = el("button", {type: "button"}, label + (sortKey === key ? (sortDir > 0 ? " ▲" : " ▼") : ""));
+    button.addEventListener("click", () => {
+      if (sortKey === key) sortDir = -sortDir; else { sortKey = key; sortDir = ["label", "category", "mac", "mobility_label"].includes(key) ? 1 : -1; }
+      renderFiltered();
+    });
+    return el("th", cls ? {class: cls} : null, button);
+  }));
+  const rows = sorted.map(d => el("tr", null,
+    el("td", {class: "status"}, el("span", {class: "dot" + (d.here ? " here" : "")}), d.here ? "Here" : "Away"),
+    el("td", null, d.name ? `${d.name}` : d.label,
+      el("div", {class: "sub"}, (d.name ? d.label + " · " : "") + d.confidence + " confidence"),
+      el("div", {class: "sub"}, d.evidence)),
+    el("td", null, d.category),
+    el("td", {class: "mono"}, d.mac, el("div", {class: "sub"}, d.kind === "public" ? "public" : "random static")),
+    el("td", null, d.band || "–",
+      d.rssi === null ? null : el("div", {class: "sub nowrap"}, d.rssi + " dBm"),
+      d.trend ? el("div", {class: "sub nowrap"}, d.trend === "Getting closer" ? "↑ Getting closer" : "↓ Moving away") : null),
+    el("td", null, d.mobility_label, el("div", {class: "sub"}, d.mobility_basis)),
+    el("td", null, stamp(d.first_seen)),
+    el("td", null, d.here ? "now" : ago(d.last_seen)),
+    el("td", {class: "num"}, fmt.format(d.visits))));
+  $("devices").replaceChildren(head, ...rows);
+  $("dev-note").textContent = `Showing ${fmt.format(devices.length)} of ${fmt.format(data.devices.length)} devices. Distance is a rough band measured from the Pi, based on signal strength.`;
+}
+
+function renderFiltered() {
+  const devices = filtered();
+  renderRadar(devices);
+  renderTimeline(devices);
+  renderDevices(devices);
+}
+
+function renderEvents() {
+  const items = data.events.map(e => el("li", null,
+    el("time", null, clock(e.t)), el("span", null, e.type === "arrived" ? "Arrived" : "Left"),
+    el("span", {class: "who"}, `${e.label} · ${e.mac.slice(-5)}`)));
+  $("events").replaceChildren(...(items.length ? items : [el("li", null, el("span", {class: "empty"}, "No activity yet."))]));
+}
+
+function renderVendors() {
+  const {hours, vendors} = data.rotating;
+  const head = el("tr", null, el("th", null, "Manufacturer"), el("th", {class: "num"}, "Hours heard"),
+    el("th", {class: "num"}, "Typical at once"), el("th", {class: "num"}, "Peak at once"), el("th", {class: "num"}, "Different devices per hour"), el("th", {class: "num"}, "Sightings"));
+  const rows = vendors.map(v => el("tr", null, el("td", null, v.name),
+    el("td", {class: "num"}, `${v.hours_heard} of ${hours}`), el("td", {class: "num"}, fmt.format(v.typical)),
+    el("td", {class: "num"}, fmt.format(v.peak)), el("td", {class: "num"}, fmt.format(v.devices_per_hour)),
+    el("td", {class: "num"}, fmt.format(v.sightings))));
+  $("vendors").replaceChildren(head, ...rows);
+}
+
+function uptimeText(seconds) {
+  const days = Math.floor(seconds / 86400), hours = Math.floor(seconds % 86400 / 3600), minutes = Math.floor(seconds % 3600 / 60);
+  return days ? `${days}d ${hours}h` : `${hours}h ${minutes}m`;
+}
+
+function renderUptime() {
+  const uptime = data.uptime;
+  if (!uptime) return;
+  $("t-boot").textContent = uptimeText(uptime.since_boot);
+  if (uptime.total === null) return;
+  $("t-total").textContent = uptimeText(uptime.total);
+  const since = new Date(uptime.counting_since * 1000).toLocaleDateString([], {month: "short", day: "numeric", year: "numeric"});
+  const boots = uptime.boots === 1 ? "1 boot" : `${fmt.format(uptime.boots)} boots, longest ${uptimeText(uptime.longest)}`;
+  $("t-total-note").textContent = `Total Pi uptime since ${since} (${boots})`;
+}
+
+function renderCategories() {
+  const select = $("cat"), current = select.value;
+  const cats = {};
+  data.devices.forEach(d => cats[d.category] = (cats[d.category] || 0) + 1);
+  const options = Object.keys(cats).sort().map(c => {
+    const option = el("option", {value: c}, `${c} (${cats[c]})`);
+    return option;
+  });
+  select.replaceChildren(el("option", {value: ""}, "All categories"), ...options);
+  select.value = current;
+}
+
+function render() {
+  const s = data.summary;
+  $("t-here").textContent = fmt.format(s.here);
+  $("t-known").textContent = fmt.format(s.known);
+  $("t-new").textContent = fmt.format(s.new_24h);
+  $("t-arrivals").textContent = fmt.format(s.arrivals_24h);
+  $("t-filtered").textContent = fmt.format(s.filtered_rotating_24h + s.filtered_findmy_24h);
+  $("updated").textContent = `Updated ${clock(data.generated)}` + (data.tracking_since ? ` · tracking since ${stamp(data.tracking_since)}` : "");
+  renderUptime();
+  renderCategories();
+  renderHourly();
+  renderVendors();
+  renderFiltered();
+  renderEvents();
+}
+
+function warn(message) {
+  $("banner").textContent = message ? "⚠ " + message : "";
+  $("banner").classList.toggle("show", !!message);
+}
+
+async function load() {
+  try {
+    const response = await fetch("data/data.json", {cache: "no-store"});
+    if (!response.ok) throw new Error(response.status);
+    data = await response.json();
+    render();
+    const age = Date.now() / 1000 - data.generated;
+    warn(data.paused ? "Scanning is paused because the Pi is low on memory." : age > 240 ? `Tracker has not updated for ${Math.round(age / 60)} minutes.` : "");
+  } catch (err) {
+    warn("Can't reach the tracker right now. Showing the last data received.");
+  }
+}
+
+["q", "cat", "move", "here-only", "hide-once"].forEach(id => $(id).addEventListener("input", () => data && renderFiltered()));
+let resizeTimer;
+addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { if (data) { renderHourly(); renderRadar(filtered()); } }, 150); });
+load();
+setInterval(load, 30000);
+</script>
+<script src="/status/alerts.js"></script>
+</body>
+</html>

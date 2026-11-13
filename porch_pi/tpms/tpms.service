@@ -1,0 +1,19 @@
+[Unit]
+Description=Tire sensor decoder forwarding to sdrpi's car store (rtl_433)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=pi
+Group=pi
+SupplementaryGroups=plugdev
+WorkingDirectory=/opt/tpms
+ExecStart=/usr/bin/python3 /opt/tpms/forward.py
+StateDirectory=tpms
+StateDirectoryMode=0700
+Restart=always
+RestartSec=10
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

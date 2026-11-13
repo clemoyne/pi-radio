@@ -1,0 +1,27 @@
+[Unit]
+Description=Long-term flight store fed from garage_pi's aircraft log
+After=network-online.target
+RequiresMountsFor=/mnt/data
+StartLimitIntervalSec=0
+
+[Service]
+User=pi
+NoNewPrivileges=yes
+ExecStart=/usr/bin/python3 -I /mnt/data/flights/app/flightstore.py
+Restart=always
+RestartSec=60
+RuntimeDirectory=flightstore
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=restart
+StandardOutput=append:/mnt/data/logs/flightstore.log
+StandardError=append:/mnt/data/logs/flightstore.log
+ReadWritePaths=/mnt/data/flights
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+Nice=10
+IOSchedulingClass=idle
+CPUQuota=25%
+
+[Install]
+WantedBy=multi-user.target

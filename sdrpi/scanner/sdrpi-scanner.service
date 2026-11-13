@@ -1,0 +1,18 @@
+[Unit]
+Description=SDRPi receive-only scanner web interface
+RequiresMountsFor=/mnt/data
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=pi
+WorkingDirectory=/mnt/data/scanner/app
+ExecStart=/usr/bin/python3 -u /mnt/data/scanner/app/server.py
+Environment=SCANNER_DATA=/mnt/data/scanner
+StandardOutput=append:/mnt/data/logs/scanner.log
+StandardError=append:/mnt/data/logs/scanner.log
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

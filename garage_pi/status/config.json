@@ -1,0 +1,16 @@
+{
+  "name": "garage_pi",
+  "output": "/run/pistatus/status.json",
+  "history": "/var/lib/pistatus/history.json",
+  "pages": [["SkyAware", "/skyaware/"], ["Aircraft log", "/aircraft/"], ["Bluetooth", "/bluetooth/"], ["Flights", "http://sdrpi.local:8080/flights/"], ["Weather", "http://sdrpi.local:8080/weather/"]],
+  "services": ["piaware", "dump1090-fa", "lighttpd", "aircraftlog", "bletracker", "piuptime.timer", "pistatus-power.path"],
+  "disks": ["/"],
+  "fresh": [
+    {"name": "ADS-B aircraft data", "path": "/run/dump1090-fa/aircraft.json", "max_age": 120},
+    {"name": "Aircraft log data", "path": "/run/aircraftlog/data.json", "max_age": 300},
+    {"name": "Bluetooth tracker data", "path": "/run/bletracker/data.json", "max_age": 300}
+  ],
+  "adsb_stats": "/run/dump1090-fa/stats.json",
+  "journal_counts": [{"name": "Go-around notices that failed to reach sdrpi", "unit": "aircraftlog", "match": "go-around notify failed"}],
+  "peer": {"name": "sdrpi", "data": "http://sdrpi.local:8080/status/data/status.json", "page": "http://sdrpi.local:8080/status/"}
+}

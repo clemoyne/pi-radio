@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="/favicon.ico?v=2"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Weather</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#1b1f24;--dim:#5d6672;--line:#e2e5ea;--grid:#eef0f3;--temp:#d9622b;--temp-band:rgba(217,98,43,.16);--hum:#2f6fd6;--hum-band:rgba(47,111,214,.12);--ok:#2e8b57;--bad:#c0392b}
+@media (prefers-color-scheme:dark){:root{--bg:#121417;--card:#1b1e23;--ink:#e8eaed;--dim:#9aa3ae;--line:#2c3138;--grid:#23272d;--temp:#f0884f;--temp-band:rgba(240,136,79,.20);--hum:#5b9cf5;--hum-band:rgba(91,156,245,.16);--ok:#4cc38a;--bad:#ef6b5c}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+header{padding:16px;max-width:1100px;margin:0 auto;display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline}
+h1{font-size:22px;margin:0}
+#station{color:var(--dim);font-size:13.5px;flex:1 1 300px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--card)}
+.seg button{font:inherit;font-size:13px;border:0;background:none;color:var(--dim);padding:5px 11px;cursor:pointer}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button.on{background:var(--temp);color:#fff}
+.seg button:focus-visible{outline:2px solid var(--hum);outline-offset:-2px}
+main{max-width:1100px;margin:0 auto;padding:0 16px 32px;display:grid;gap:14px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px}
+.tile,.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;min-width:0}
+.tile .n{font-size:30px;font-weight:650;font-variant-numeric:tabular-nums}
+.tile .n small{font-size:16px;font-weight:500;color:var(--dim);margin-left:2px}
+.tile .l{color:var(--dim);font-size:13px}
+.tile .n.bad{color:var(--bad)}
+.tile .n.range{font-size:24px;white-space:nowrap}
+h2{font-size:15px;margin:0 0 4px}
+.note{color:var(--dim);font-size:13px;margin:0 0 8px}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:13px;color:var(--dim);margin-bottom:6px}
+.legend i{display:inline-block;width:14px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+svg{display:block;width:100%;overflow:visible;touch-action:pan-y}
+svg text{fill:var(--dim);font-size:11px;font-variant-numeric:tabular-nums}
+table{width:100%;border-collapse:collapse;font-size:13.5px;font-variant-numeric:tabular-nums}
+th{text-align:left;color:var(--dim);font-weight:500;border-bottom:1px solid var(--line);padding:4px 6px}
+td{padding:4px 6px;border-bottom:1px solid var(--grid);white-space:nowrap}
+td.num,th.num{text-align:right}
+.scroll{overflow-x:auto;max-height:420px;overflow-y:auto}
+#tip{position:fixed;pointer-events:none;background:var(--ink);color:var(--bg);font-size:12.5px;padding:5px 8px;border-radius:6px;display:none;z-index:5;white-space:pre}
+.empty{color:var(--dim);font-size:13.5px;padding:8px 0}
+.nav{font-size:13px;color:var(--dim)} .nav a{color:var(--dim)}
+.sub{color:var(--dim);font-size:12.5px}
+.namerow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 10px;font-size:13.5px}
+input[type=text]{font:inherit;font-size:13.5px;padding:5px 9px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--ink);width:min(240px,100%)}
+button.small,#title-save{font:inherit;font-size:13px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:7px;padding:4px 10px;cursor:pointer}
+button.small:focus-visible,#title-save:focus-visible,input:focus-visible{outline:2px solid var(--hum);outline-offset:1px}
+.chip{display:inline-block;font-size:11.5px;padding:0 6px;margin:0 3px 2px 0;border-radius:9px;border:1px solid var(--line);color:var(--dim)}
+.main{color:#fff;background:var(--temp);border-color:var(--temp)}
+tr.waiting td{color:var(--dim)}
+</style>
+</head>
+<body>
+<header><h1 id="title">Weather</h1><div id="station">Loading…</div>
+  <div class="seg" id="units" role="group" aria-label="Temperature unit"><button data-unit="C">°C</button><button data-unit="F">°F</button></div>
+  <div class="seg" id="period" role="group" aria-label="Period"><button data-days="2" class="on">48 hours</button><button data-days="7">7 days</button><button data-days="30">30 days</button><button data-days="365">Year</button></div>
+</header>
+<main>
+  <div class="tiles">
+    <div class="tile"><div class="n" id="t-temp">–</div><div class="l" id="t-temp-l">Temperature</div></div>
+    <div class="tile"><div class="n" id="t-hum">–</div><div class="l">Humidity</div></div>
+    <div class="tile"><div class="n" id="t-dew">–</div><div class="l">Dew point</div></div>
+    <div class="tile"><div class="n range" id="t-range">–</div><div class="l">Low and high, last 24 h</div></div>
+    <div class="tile"><div class="n" id="t-batt">–</div><div class="l">Sensor battery</div></div>
+  </div>
+  <section class="card">
+    <h2>Temperature</h2><p class="note" id="temp-note"></p>
+    <div class="legend"><span><i style="background:var(--temp)"></i>Average</span><span><i style="background:var(--temp-band)"></i>Low to high</span></div>
+    <svg id="temp-chart" height="240" role="img" aria-label="Temperature over time"></svg>
+  </section>
+  <section class="card">
+    <h2>Humidity</h2><p class="note" id="hum-note"></p>
+    <svg id="hum-chart" height="170" role="img" aria-label="Humidity over time"></svg>
+  </section>
+  <section class="card">
+    <h2>Daily highs and lows</h2><p class="note">By local day, newest first.</p>
+    <div class="scroll"><table id="days"></table></div>
+  </section>
+  <section class="card" id="stations-card">
+    <h2>Stations</h2>
+    <p class="note">Every weather sensor or station porch-pi has picked up, found automatically: anything that reports temperature, humidity, wind, rain, pressure, UV or light.
+      Name them, and pick which one the dashboard shows. A sensor heard only once or twice may be a misread message, so it waits until it's heard <span id="min-readings">3</span> times.</p>
+    <div class="namerow"><label for="title-input">Dashboard name</label><input id="title-input" type="text" maxlength="60" placeholder="Weather"><button id="title-save" type="button">Save</button><span class="sub" id="title-msg"></span></div>
+    <div class="scroll"><table id="stations"></table></div>
+  </section>
+  <p class="note" id="about"></p>
+  <p class="nav"><a href="/">Scanner</a> · <a href="/bluetooth/">Bluetooth</a> · <a href="/wifi/">Wi-Fi</a> · <a href="/flights/">Flights</a> · <a href="/cars/">Car counter</a> · <a href="/status/">Status</a> · <a href="http://piaware.local/aircraft/">garage_pi</a></p>
+</main>
+<div id="tip"></div>
+<script>
+const $ = id => document.getElementById(id);
+const SVG = "http://www.w3.org/2000/svg";
+const el = (tag, attrs, ...kids) => { const n = document.createElement(tag); for (const [k, v] of Object.entries(attrs || {})) n.setAttribute(k, v); n.append(...kids.filter(k => k !== null && k !== undefined)); return n; };
+const sv = (tag, attrs) => { const n = document.createElementNS(SVG, tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); return n; };
+const one = v => v === null || v === undefined ? "–" : v.toFixed(1);
+const ago = s => s < 90 ? `${Math.round(s)} s ago` : s < 5400 ? `${Math.round(s / 60)} min ago` : s < 172800 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} days ago`;
+const hm = t => new Date(t * 1000).toLocaleTimeString([], {hour: "numeric", minute: "2-digit"});
+const dayName = t => new Date(t * 1000).toLocaleDateString([], {weekday: "short", month: "short", day: "numeric"});
+// Readings are stored in °C; the viewer picks how they are shown, remembered in this browser
+let unit = "C";
+try { if (localStorage.getItem("weather-unit") === "F") unit = "F"; } catch (e) {}
+const conv = c => c === null || c === undefined ? null : unit === "F" ? c * 9 / 5 + 32 : c;
+const deg = c => c === null || c === undefined ? "–" : conv(c).toFixed(1);
+const U = () => `°${unit}`;
+let days = 2;
+try { const saved = Number(localStorage.getItem("weather-days")); if ([2, 7, 30, 365].includes(saved)) days = saved; } catch (e) {}
+
+function tip(e, text) { const t = $("tip"); t.textContent = text; t.style.display = "block"; t.style.left = Math.min(e.clientX + 12, innerWidth - t.offsetWidth - 8) + "px"; t.style.top = (e.clientY - t.offsetHeight - 10) + "px"; }
+function hideTip() { $("tip").style.display = "none"; }
+
+// One line with an optional low-high band, gaps wherever a slot has no data; crosshair and tooltip on hover
+function lineChart(svg, points, opts) {
+  svg.replaceChildren();
+  const W = svg.clientWidth || 700, H = +svg.getAttribute("height"), L = 38, R = 8, T = 8, B = 22;
+  const vals = points.flatMap(p => [p.lo, p.hi, p.v]).filter(v => v !== null && v !== undefined);
+  if (!vals.length) { const t = sv("text", {x: L, y: H / 2}); t.textContent = "No readings yet in this period."; svg.append(t); return; }
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  if (opts.min !== undefined) lo = Math.min(lo, opts.min);
+  if (opts.max !== undefined) hi = Math.max(hi, opts.max);
+  const span = hi - lo || 1, step = [1, 2, 5, 10, 20, 25, 50].find(s => span / s <= 5) || 100;
+  lo = Math.floor(lo / step) * step; hi = Math.ceil(hi / step) * step;
+  const t0 = points[0].t, t1 = points[points.length - 1].t || t0 + 1;
+  const x = t => L + (W - L - R) * (t - t0) / Math.max(1, t1 - t0), y = v => T + (H - T - B) * (1 - (v - lo) / (hi - lo));
+  for (let v = lo; v <= hi + 1e-9; v += step) {
+    svg.append(sv("line", {x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: "var(--grid)"}));
+    const t = sv("text", {x: L - 6, y: y(v) + 4, "text-anchor": "end"}); t.textContent = `${Math.round(v * 10) / 10}${opts.unit}`; svg.append(t);
+  }
+  if (opts.freezing !== undefined && lo < opts.freezing && hi > opts.freezing) svg.append(sv("line", {x1: L, x2: W - R, y1: y(opts.freezing), y2: y(opts.freezing), stroke: "var(--dim)", "stroke-dasharray": "3 3"}));
+  // x labels: a few evenly spaced times
+  const labels = Math.max(2, Math.floor((W - L) / 110));
+  for (let i = 0; i <= labels; i++) {
+    const t = t0 + (t1 - t0) * i / labels, text = sv("text", {x: x(t), y: H - 5, "text-anchor": i === 0 ? "start" : i === labels ? "end" : "middle"});
+    text.textContent = opts.daily || t1 - t0 > 3 * 86400 ? dayName(t) : hm(t); svg.append(text);
+  }
+  // runs of consecutive points with data
+  const runs = []; let run = [];
+  for (const p of points) { if (p.v === null || p.v === undefined) { if (run.length) runs.push(run); run = []; } else run.push(p); }
+  if (run.length) runs.push(run);
+  for (const r of runs) {
+    if (opts.band && r.length > 1) {
+      const top = r.map(p => `${x(p.t)},${y(p.hi)}`), bottom = r.slice().reverse().map(p => `${x(p.t)},${y(p.lo)}`);
+      svg.append(sv("polygon", {points: [...top, ...bottom].join(" "), fill: opts.band}));
+    }
+    if (r.length === 1) svg.append(sv("circle", {cx: x(r[0].t), cy: y(r[0].v), r: 3, fill: opts.color}));
+    else svg.append(sv("polyline", {points: r.map(p => `${x(p.t)},${y(p.v)}`).join(" "), fill: "none", stroke: opts.color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round"}));
+  }
+  const cross = sv("line", {y1: T, y2: H - B, stroke: "var(--dim)", "stroke-width": 1, visibility: "hidden"});
+  const dot = sv("circle", {r: 4, fill: opts.color, stroke: "var(--card)", "stroke-width": 2, visibility: "hidden"});
+  const hit = sv("rect", {x: L, y: T, width: W - L - R, height: H - T - B, fill: "transparent"});
+  svg.append(cross, dot, hit);
+  const withData = points.filter(p => p.v !== null && p.v !== undefined);
+  const move = e => {
+    const box = svg.getBoundingClientRect(), t = t0 + (e.clientX - box.left - L) / (W - L - R) * (t1 - t0);
+    const p = withData.reduce((a, b) => Math.abs(b.t - t) < Math.abs(a.t - t) ? b : a);
+    cross.setAttribute("x1", x(p.t)); cross.setAttribute("x2", x(p.t)); cross.setAttribute("visibility", "visible");
+    dot.setAttribute("cx", x(p.t)); dot.setAttribute("cy", y(p.v)); dot.setAttribute("visibility", "visible");
+    tip(e, opts.tip(p));
+  };
+  hit.addEventListener("pointermove", move);
+  hit.addEventListener("pointerdown", move);
+  hit.addEventListener("pointerleave", () => { cross.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); hideTip(); });
+}
+
+// Hourly points for short periods, daily for long ones; every slot is present so missing ones show as gaps
+function slots(rows, daily) {
+  if (!rows.length) return [];
+  const stepS = daily ? 86400 : 3600, byT = new Map(rows.map(r => [r.t, r]));
+  const out = [];
+  for (let t = rows[0].t; t <= rows[rows.length - 1].t; t += stepS) out.push(byT.get(t) || {t});
+  return out;
+}
+
+async function refresh() {
+  const daily = days > 7;
+  let s, series;
+  try {
+    [s, series] = await Promise.all([fetch("api/status", {cache: "no-store"}).then(r => r.json()),
+      fetch(`api/${daily ? "daily" : "hourly"}?days=${days}`, {cache: "no-store"}).then(r => r.json())]);
+  } catch (e) { $("station").textContent = "Can't reach the weather store on sdrpi."; return; }
+  const c = s.current, main = s.stations.find(x => x.sensor === s.sensor);
+  $("title").textContent = s.title;
+  document.title = s.title;
+  if (document.activeElement !== $("title-input")) $("title-input").value = s.title === "Weather" ? "" : s.title;
+  $("station").textContent = !main ? "No weather station found yet. porch-pi listens on 433.92 MHz 1 minute in 4; any station it hears appears under Stations."
+    : `${main.name || stationModel(main)}${main.name ? ` (${stationModel(main)})` : ""} · last reading ${c ? ago(s.now - c.t) : "–"} · ${s.readings.toLocaleString()} readings kept since ${s.since ? dayName(s.since) : "–"}`;
+  renderStations(s);
+  $("t-temp").replaceChildren(c && c.temp_c !== null ? deg(c.temp_c) : "–", el("small", null, U()));
+  $("t-temp-l").textContent = c && c.change_1h !== null ? `Temperature, ${c.change_1h > 0 ? "up" : c.change_1h < 0 ? "down" : "steady"}${c.change_1h ? ` ${Math.abs(unit === "F" ? c.change_1h * 9 / 5 : c.change_1h).toFixed(1)}°` : ""} in the last hour` : "Temperature";
+  $("t-hum").replaceChildren(c && c.humidity !== null ? `${Math.round(c.humidity)}` : "–", el("small", null, "%"));
+  $("t-dew").replaceChildren(c && c.dew_point_c !== null ? deg(c.dew_point_c) : "–", el("small", null, U()));
+  const d = s.last_24h;
+  $("t-range").replaceChildren(d && d.temp_min !== null ? `${deg(d.temp_min)} / ${deg(d.temp_max)}` : "–", el("small", null, U()));
+  $("t-batt").textContent = !c || c.battery_ok === null ? "–" : c.battery_ok ? "OK" : "Low";
+  $("t-batt").className = "n" + (c && c.battery_ok === 0 ? " bad" : "");
+
+  const rows = daily ? series.days.map(r => ({...r, t: new Date(r.day + "T12:00").getTime() / 1000})) : series.hours;
+  const filled = slots(rows, daily);
+  const period = {2: "last 48 hours", 7: "last 7 days", 30: "last 30 days", 365: "last year"}[days];
+  $("temp-note").textContent = `${daily ? "Daily" : "Hourly"} average, with the lowest and highest reading in each ${daily ? "day" : "hour"}, ${period}. Gaps are ${daily ? "days" : "hours"} with no readings.`;
+  $("hum-note").textContent = `${daily ? "Daily" : "Hourly"} average relative humidity, ${period}.`;
+  lineChart($("temp-chart"), filled.map(p => ({t: p.t, v: conv(p.avg), lo: conv(p.min), hi: conv(p.max)})), {color: "var(--temp)", band: "var(--temp-band)", unit: "°", freezing: conv(0),
+    daily, tip: p => `${daily ? dayName(p.t) : `${dayName(p.t)} ${hm(p.t)}`}\n${one(p.v)} ${U()} average\n${one(p.lo)} to ${one(p.hi)} ${U()}`});
+  lineChart($("hum-chart"), filled.map(p => ({t: p.t, v: p.humidity})), {color: "var(--hum)", unit: "%", min: 0, max: 100, daily,
+    tip: p => `${daily ? dayName(p.t) : `${dayName(p.t)} ${hm(p.t)}`}\n${Math.round(p.v)}% humidity`});
+
+  const table = await fetch(`api/daily?days=${Math.max(days, 30)}`, {cache: "no-store"}).then(r => r.json());
+  const head = el("tr", null, ...["Day", "Low", "High", "Average", "Humidity", "Readings"].map((h, i) => el("th", i ? {class: "num"} : null, h)));
+  const body = table.days.slice().reverse().map(r => el("tr", null, el("td", null, new Date(r.day + "T12:00").toLocaleDateString([], {weekday: "short", year: "numeric", month: "short", day: "numeric"})),
+    el("td", {class: "num"}, `${deg(r.min)} ${U()}`), el("td", {class: "num"}, `${deg(r.max)} ${U()}`), el("td", {class: "num"}, `${deg(r.avg)} ${U()}`),
+    el("td", {class: "num"}, r.humidity === null ? "–" : `${Math.round(r.humidity)}%`), el("td", {class: "num"}, r.n.toLocaleString())));
+  $("days").replaceChildren(...(body.length ? [head, ...body] : [el("tr", null, el("td", {class: "empty"}, "No readings yet."))]));
+  $("about").textContent = scheduleText(s.schedule) + "Every reading is kept in a database on sdrpi. Sun on a sensor, or warmth from the house, can push its readings above the true air temperature.";
+}
+// How often porch-pi listens for the stations, from what it last reported
+function scheduleText(sched) {
+  if (!sched || sched.band !== "315w") {
+    return "porch-pi isn't set to check the weather: pick \"315 + weather\" on the car counter page to turn the checks on. ";
+  }
+  const now = Date.now() / 1000, next = sched.next_check;
+  const when = sched.doing === "weather check" ? "listening now" : sched.doing === "station search" ? "searching for new stations now"
+    : next ? (next > now ? `next in ${Math.max(1, Math.round((next - now) / 60))} min` : "due now") : "";
+  return "porch-pi listens for tire sensors on 315 MHz and leaves every 15 minutes for a 75-second weather check on the stations' frequencies" +
+    `${when ? ` (${when})` : ""}, so a new reading arrives about every 15 minutes. Once a week, Sunday at 3 am, it spends 10 minutes each on 433.92 and 915 MHz ` +
+    `looking for stations it hasn't heard before${sched.last_search ? `; last search ${dayName(sched.last_search)}` : ""}. `;
+}
+function stationModel(st) { return `${st.model.replace(/-/g, " ")}, ID ${st.ident}${st.channel ? `, channel ${st.channel}` : ""}`; }
+async function saveStation(body) {
+  const r = await fetch("api/station", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+// The list is rebuilt each minute, except while someone is typing a name in it
+function renderStations(s) {
+  if ($("stations-card").contains(document.activeElement) && document.activeElement.tagName === "INPUT") return;
+  $("min-readings").textContent = s.min_readings;
+  const head = el("tr", null, ...["Name", "Sensor", "Measures", "Latest", "Last heard", "Readings", ""].map(h => el("th", null, h)));
+  const rows = s.stations.map(st => {
+    const input = el("input", {type: "text", maxlength: "60", placeholder: "Name this station", "aria-label": `Name for ${stationModel(st)}`});
+    input.value = st.name || "";
+    const save = async () => { if ((st.name || "") === input.value.trim()) return; try { await saveStation({sensor: st.sensor, name: input.value}); } catch (e) { input.title = e.message; } refresh(); };
+    input.addEventListener("change", save);
+    input.addEventListener("keydown", e => { if (e.key === "Enter") input.blur(); });
+    const v = st.latest || {}, bits = [];
+    if (v.temp_c !== null && v.temp_c !== undefined) bits.push(`${deg(v.temp_c)} ${U()}`);
+    if (v.humidity !== null && v.humidity !== undefined) bits.push(`${Math.round(v.humidity)}%`);
+    for (const [k, val] of Object.entries(v.other || {})) bits.push(`${k.replace(/_/g, " ")} ${val}`);
+    if (v.battery_ok === 0) bits.push("battery low");
+    let action;
+    if (st.sensor === s.sensor) action = el("span", {class: "chip main"}, "On dashboard");
+    else if (!st.confirmed) action = el("span", {class: "sub"}, `Heard ${st.readings}×, waiting`);
+    else {
+      action = el("button", {class: "small", type: "button"}, "Show on dashboard");
+      action.addEventListener("click", async () => { action.disabled = true; try { await saveStation({sensor: st.sensor, main: true}); } catch (e) {} refresh(); });
+    }
+    return el("tr", st.confirmed ? null : {class: "waiting"}, el("td", null, input), el("td", null, stationModel(st)),
+      el("td", null, ...st.measures.map(m => el("span", {class: "chip"}, m))), el("td", null, bits.join(" · ") || "–"),
+      el("td", null, ago(s.now - st.last)), el("td", {class: "num"}, st.readings.toLocaleString()), el("td", null, action));
+  });
+  $("stations").replaceChildren(...(rows.length ? [head, ...rows] : [el("tr", null, el("td", {class: "empty"}, "None found yet."))]));
+}
+$("title-save").addEventListener("click", async () => {
+  try { await saveStation({title: $("title-input").value}); $("title-msg").textContent = "Saved."; } catch (e) { $("title-msg").textContent = e.message; }
+  $("title-input").blur();
+  refresh();
+});
+$("title-input").addEventListener("keydown", e => { if (e.key === "Enter") $("title-save").click(); });
+
+document.querySelectorAll("#units button").forEach(b => {
+  b.classList.toggle("on", b.dataset.unit === unit);
+  b.addEventListener("click", () => {
+    unit = b.dataset.unit;
+    try { localStorage.setItem("weather-unit", unit); } catch (e) {}
+    document.querySelectorAll("#units button").forEach(x => x.classList.toggle("on", x === b));
+    refresh();
+  });
+});
+document.querySelectorAll("#period button").forEach(b => {
+  b.classList.toggle("on", Number(b.dataset.days) === days);
+  b.addEventListener("click", () => {
+    days = Number(b.dataset.days);
+    try { localStorage.setItem("weather-days", String(days)); } catch (e) {}
+    document.querySelectorAll("#period button").forEach(x => x.classList.toggle("on", x === b));
+    refresh();
+  });
+});
+let resizeTimer;
+addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(refresh, 200); });
+refresh();
+setInterval(refresh, 60000);
+</script>
+</body>
+</html>

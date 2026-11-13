@@ -1,0 +1,28 @@
+[Unit]
+Description=Passive 2.4 GHz Wi-Fi presence tracker
+After=network-online.target NetworkManager.service
+RequiresMountsFor=/mnt/data
+StartLimitIntervalSec=0
+
+[Service]
+User=pi
+ExecStart=/usr/bin/python3 -I /mnt/data/wifitracker/app/wifitracker.py
+Restart=always
+RestartSec=60
+RuntimeDirectory=wifitracker
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=restart
+ReadWritePaths=/mnt/data/wifitracker
+StandardOutput=append:/mnt/data/logs/wifitracker.log
+StandardError=append:/mnt/data/logs/wifitracker.log
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+Nice=10
+IOSchedulingClass=idle
+CPUQuota=25%
+
+[Install]
+WantedBy=multi-user.target

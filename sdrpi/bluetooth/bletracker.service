@@ -1,0 +1,30 @@
+[Unit]
+Description=Passive BLE presence tracker
+After=bluetooth.service hciuart.service
+RequiresMountsFor=/mnt/data
+StartLimitIntervalSec=0
+
+[Service]
+User=pi
+ExecStartPre=+/usr/sbin/rfkill unblock bluetooth
+ExecStartPre=+/usr/bin/hciconfig hci0 up
+ExecStart=/usr/bin/python3 -I /mnt/data/bletracker/app/bletracker.py
+Restart=always
+RestartSec=60
+RuntimeDirectory=bletracker
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=restart
+ReadWritePaths=/mnt/data/bletracker
+StandardOutput=append:/mnt/data/logs/bletracker.log
+StandardError=append:/mnt/data/logs/bletracker.log
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+Nice=10
+IOSchedulingClass=idle
+CPUQuota=25%
+
+[Install]
+WantedBy=multi-user.target

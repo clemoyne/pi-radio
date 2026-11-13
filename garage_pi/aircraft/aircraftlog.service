@@ -1,0 +1,25 @@
+[Unit]
+Description=Aircraft visit logger and watch list API
+After=dump1090-fa.service
+StartLimitIntervalSec=0
+
+[Service]
+ExecStart=/usr/bin/python3 -I /opt/aircraftlog/aircraftlog.py
+Restart=always
+RestartSec=60
+DynamicUser=yes
+StateDirectory=aircraftlog
+RuntimeDirectory=aircraftlog
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=restart
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+Nice=10
+IOSchedulingClass=idle
+CPUQuota=15%
+OOMScoreAdjust=800
+LimitAS=128M
+
+[Install]
+WantedBy=multi-user.target

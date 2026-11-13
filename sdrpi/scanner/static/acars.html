@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="/favicon.ico?v=2"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ACARS Messages</title>
+<style>
+:root {
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #3d3c39; --muted: #6f6d68; --grid: #e1e0d9; --axis: #c9c8c1;
+  --border: rgba(11,11,11,0.10); --series: #2a78d6; --series-2: #eb6834; --wash: rgba(42,120,214,0.08);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c8c6c1; --muted: #989690; --grid: #2c2c2a; --axis: #45443f;
+    --border: rgba(255,255,255,0.10); --series: #3987e5; --series-2: #d95926; --wash: rgba(57,135,229,0.10);
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1120px; margin: 0 auto; padding: 24px 16px 48px; display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; }
+h1 { font-size: 22px; margin: 0; font-weight: 600; }
+h2 { font-size: 15px; margin: 0 0 4px; font-weight: 600; }
+a { color: var(--series); }
+.note { color: var(--muted); font-size: 12.5px; margin: 0 0 10px; }
+header .note { margin: 0; }
+.card, .tile { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px; min-width: 0; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.tile b { display: block; font-size: 26px; font-weight: 600; line-height: 1.2; }
+.tile span { color: var(--ink-2); font-size: 13px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
+.bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+select, button, input { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--axis); border-radius: 6px; padding: 6px 10px; min-height: 34px; }
+button { cursor: pointer; }
+button.go { background: var(--series); border-color: var(--series); color: #fff; }
+button.stop { border-color: var(--series-2); color: var(--series-2); }
+input { flex: 1 1 200px; min-width: 0; }
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+th { text-align: left; font-weight: 500; color: var(--ink-2); padding: 6px 10px 6px 0; border-bottom: 1px solid var(--axis); white-space: nowrap; }
+td { padding: 6px 10px 6px 0; border-bottom: 1px solid var(--grid); vertical-align: top; }
+td.num { text-align: right; }
+.msg { border-bottom: 1px solid var(--grid); padding: 10px 0; }
+.msg:last-child { border-bottom: 0; }
+.msg.empty-text { opacity: .75; }
+.head { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; }
+.head b { font-weight: 600; }
+.sub { color: var(--muted); font-size: 12.5px; }
+pre { margin: 6px 0 0; padding: 8px 10px; background: var(--page); border: 1px solid var(--grid); border-radius: 6px; white-space: pre-wrap; word-break: break-word; font: 12.5px/1.4 ui-monospace, Menlo, Consolas, monospace; }
+.status-on { color: var(--series-2); font-weight: 600; }
+ul.summary { margin: 6px 0 0; padding-left: 20px; }
+ul.summary li { margin: 2px 0; }
+details summary { cursor: pointer; color: var(--muted); font-size: 12.5px; margin-top: 6px; }
+.setting { display: flex; gap: 8px; align-items: flex-start; margin: 6px 0; }
+.setting input { min-height: 0; margin-top: 3px; flex: none; }
+.hide { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>ACARS Messages</h1>
+    <span class="note"><a href="/">Scanner</a> · <a href="/bluetooth/">Bluetooth</a> · <a href="/wifi/">Wi-Fi</a> · <a href="/flights/">Flights</a> · <a href="/weather/">Weather</a> · <a href="/status/">Status</a> · <a href="http://piaware.local/aircraft/">garage_pi</a> · <span id="updated">Loading…</span></span>
+  </header>
+
+  <section class="card">
+    <h2>ACARS mode</h2>
+    <p class="note" id="mode-text"></p>
+    <div class="bar" id="controls">
+      <select id="end" aria-label="Run until"></select>
+      <button class="go" id="start">Start</button>
+      <button class="stop hide" id="stop">Stop ACARS mode</button>
+    </div>
+    <p class="note" id="result" style="margin-top:8px"></p>
+    <h2 style="margin-top:12px">Automatic switching</h2>
+    <label class="setting"><input type="checkbox" id="s-vdl2"> Decode VDL2 (136.65–136.975 MHz) instead of classic ACARS (129–131 MHz). Most airline datalink now travels over VDL2; its messages appear here the same way. Takes effect the next time ACARS mode starts</label>
+    <label class="setting"><input type="checkbox" id="s-goaround"> Go-arounds interrupt ACARS mode to record the departures channel for 5 minutes, then ACARS mode carries on until its end time</label>
+    <label class="setting"><input type="checkbox" id="s-emergency"> Start ACARS mode while an aircraft in range squawks an emergency (7500, 7600 or 7700), and for 10 minutes after. It takes over from listening and auto-recording, but waits for a go-around or your own continuous recording to finish</label>
+    <p class="note" id="emergency-now"></p>
+  </section>
+
+  <section class="tiles" aria-label="Last 24 hours">
+    <div class="tile"><b id="t-messages">–</b><span>Messages, 24 hours</span></div>
+    <div class="tile"><b id="t-aircraft">–</b><span>Aircraft</span></div>
+    <div class="tile"><b id="t-flights">–</b><span>Flights</span></div>
+  </section>
+
+  <section class="grid">
+    <div class="card"><h2>By message type</h2><p class="note">Last 24 hours</p><div class="scroll"><table id="labels"></table></div></div>
+    <div class="card"><h2>By channel</h2><p class="note">Last 24 hours</p><div class="scroll"><table id="freqs"></table></div></div>
+  </section>
+
+  <section class="card">
+    <h2>Messages</h2>
+    <p class="note">Newest first, up to 300. ACARS is the text link between an airliner and its airline: gate and fuel reports, weather, maintenance data, and sometimes air traffic control messages. Much of it is coded by each airline, so the raw text is shown as received, with the parts that have a standard meaning explained.</p>
+    <div class="bar" style="margin-bottom:8px">
+      <input id="q" type="search" placeholder="Filter by tail number, flight, type or text" aria-label="Filter messages">
+      <label class="sub"><input type="checkbox" id="hide-empty" checked style="min-height:0;flex:none"> Hide messages with no text</label>
+    </div>
+    <div id="messages"></div>
+  </section>
+  <p class="note">Received only, never transmitted. Listening is fine in Canada, but the law bars sharing or using what you intercept.</p>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let data = null;
+
+function el(tag, attrs, ...kids) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) { if (k === "class") node.className = v; else node.setAttribute(k, v); }
+  for (const kid of kids) if (kid !== null && kid !== undefined && kid !== false) node.append(kid);
+  return node;
+}
+function when(t) { return new Date(t * 1000).toLocaleString([], {month: "short", day: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit"}); }
+function rows(table, head, items) {
+  $(table).replaceChildren(el("tr", null, ...head.map(h => el("th", null, h))), ...items.map(cells => el("tr", null, ...cells.map((c, i) => el("td", i === cells.length - 1 ? {class: "num"} : null, c)))));
+  if (!items.length) $(table).replaceChildren(el("tr", null, el("td", {class: "sub"}, "Nothing yet.")));
+}
+
+const rawOpen = new Map();  // message id -> whether its raw section is open
+
+function message(m) {
+  const tail = m.tail ? el("a", {href: "/flights/#plane=" + encodeURIComponent(m.tail)}, m.tail) : null;
+  const summary = (m.summary || []).length ? el("ul", {class: "summary"}, ...m.summary.map(line => el("li", null, line))) : null;
+  // The raw text and decoded fields stay available for anyone who wants them, folded away
+  const raw = m.text || (m.decoded && Object.keys(m.decoded).length)
+    ? el("details", null, el("summary", null, summary ? "Show raw message" : "Raw message (not decoded further)"),
+        m.text ? el("pre", null, m.text.replace(/\r/g, "")) : null,
+        m.decoded && Object.keys(m.decoded).length ? el("pre", null, JSON.stringify(m.decoded, null, 2)) : null)
+    : null;
+  if (raw) {
+    // The list is rebuilt every 10 s, so remember what the reader opened or closed; otherwise open only when the raw
+    // text is all there is to show
+    raw.open = rawOpen.has(m.id) ? rawOpen.get(m.id) : !summary;
+    raw.addEventListener("toggle", () => rawOpen.set(m.id, raw.open));
+  }
+  return el("div", {class: "msg" + (m.text ? "" : " empty-text")},
+    el("div", {class: "head"},
+      el("span", {class: "sub"}, when(m.t)),
+      el("b", null, m.flight || "–"), tail,
+      el("span", null, m.label_name, el("span", {class: "sub"}, ` (label ${m.label})`)),
+      el("span", {class: "sub"}, [m.direction, `${Number(m.freq).toFixed(3)} MHz`, `${Math.round(m.level)} dB`, m.error ? `${m.error} bit${m.error > 1 ? "s" : ""} corrected` : null].filter(Boolean).join(" · "))),
+    summary, raw);
+}
+
+function renderMessages() {
+  const q = $("q").value.trim().toLowerCase(), hide = $("hide-empty").checked;
+  const list = data.messages.filter(m => (!hide || m.text) && (!q || [m.tail, m.flight, m.label, m.label_name, m.text].some(v => v && v.toLowerCase().includes(q))));
+  $("messages").replaceChildren(...(list.length ? list.map(message) : [el("p", {class: "sub"}, data.messages.length ? "No messages match." : "No messages yet.")]));
+}
+
+function render() {
+  const s = data.summary || {}, job = data.running;
+  $("t-messages").textContent = s.messages ?? 0;
+  $("t-aircraft").textContent = s.aircraft ?? 0;
+  $("t-flights").textContent = s.flights ?? 0;
+  rows("labels", ["Type", "Messages"], (s.by_label || []).map(([label, count, name]) => [el("span", null, name, el("span", {class: "sub"}, ` (${label})`)), String(count)]));
+  rows("freqs", ["Channel", "Messages"], (s.by_freq || []).map(([freq, count]) => [`${Number(freq).toFixed(3)} MHz`, String(count)]));
+  if (job) {
+    const h = Math.floor(job.ends_in / 3600), m = Math.floor(job.ends_in % 3600 / 60);
+    $("mode-text").replaceChildren(el("span", {class: "status-on"}, "On"), job.reason ? ` · started automatically: ${job.reason}` : "",
+      ` · decoding ${job.freqs.join(", ")} MHz · ${job.messages} message${job.messages === 1 ? "" : "s"} this run · ends in ${h}h ${m}m. The scanner's listening and auto-recording are paused meanwhile.`,
+      job.reason ? " Stopping it keeps it off until these emergencies end." : "");
+  } else {
+    $("mode-text").textContent = `Off. Starting it hands the HackRF to the ACARS decoder on ${data.freqs.join(", ")} MHz; listening and auto-recording pause until it ends.`;
+  }
+  $("start").classList.toggle("hide", !!job); $("end").classList.toggle("hide", !!job); $("stop").classList.toggle("hide", !job);
+  $("updated").textContent = `Updated ${new Date().toLocaleTimeString([], {hour: "numeric", minute: "2-digit"})}`;
+  renderMessages();
+}
+
+function renderSettings(s) {
+  $("s-vdl2").checked = s.acars_vdl2;
+  $("s-goaround").checked = s.goaround_interrupts_acars;
+  $("s-emergency").checked = s.emergency_starts_acars;
+  const names = s.emergencies.map(v => `${v.callsign || v.reg || v.hex} squawking ${v.squawk}`);
+  $("emergency-now").textContent = names.length ? `Emergency squawk in range now: ${names.join(", ")}.${s.declined ? " You stopped ACARS mode for it, so it stays off until the emergency ends." : ""}`
+    : "No emergency squawks in range (checked once a minute from the garage Pi's aircraft log).";
+}
+async function saveSettings() {
+  const r = await fetch("/api/acars/settings", {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({acars_vdl2: $("s-vdl2").checked, goaround_interrupts_acars: $("s-goaround").checked,
+                          emergency_starts_acars: $("s-emergency").checked})});
+  renderSettings(await r.json());
+}
+$("s-vdl2").addEventListener("change", saveSettings);
+$("s-goaround").addEventListener("change", saveSettings);
+$("s-emergency").addEventListener("change", saveSettings);
+
+async function load() {
+  try {
+    data = await (await fetch("/api/acars/messages", {cache: "no-store"})).json();
+    renderSettings(await (await fetch("/api/acars/settings", {cache: "no-store"})).json());
+    render();
+  } catch (error) {
+    $("updated").textContent = "Can't reach the scanner";
+  }
+}
+
+(function fillEnd() {
+  const five = new Date(); five.setHours(5, 0, 0, 0); if (five <= Date.now()) five.setDate(five.getDate() + 1);
+  $("end").replaceChildren(el("option", {value: String(five.getTime() / 1000)}, "Until 5:00 AM"),
+    ...[1, 2, 4, 8].map(h => el("option", {value: "h" + h}, `For ${h} hour${h > 1 ? "s" : ""}`)));
+})();
+$("start").addEventListener("click", async () => {
+  const v = $("end").value, until = v.startsWith("h") ? Date.now() / 1000 + Number(v.slice(1)) * 3600 : Number(v);
+  const r = await fetch("/api/acars/start", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({until})});
+  const text = await r.text(); let d = {}; try { d = JSON.parse(text); } catch (e) {}
+  $("result").textContent = !r.ok ? text : d.status === "busy" ? `The radio is busy: ${d.recording}. Stop that first.` : "";
+  setTimeout(load, 1500);
+});
+$("stop").addEventListener("click", async () => { await fetch("/api/acars/stop", {method: "POST"}); setTimeout(load, 2500); });
+$("q").addEventListener("input", () => data && renderMessages());
+$("hide-empty").addEventListener("change", () => data && renderMessages());
+load();
+setInterval(load, 10000);
+</script>
+<script src="/power.js"></script>
+<script src="/status/alerts.js"></script>
+</body>
+</html>

@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="/favicon.ico?v=2"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Car Counter</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#1b1f24;--dim:#5d6672;--line:#e2e5ea;--new:#2f6fd6;--repeat:#d9822b;--ok:#2e8b57;--bad:#c0392b;--grid:#eef0f3;--tire:#8b95a3}
+@media (prefers-color-scheme:dark){:root{--bg:#121417;--card:#1b1e23;--ink:#e8eaed;--dim:#9aa3ae;--line:#2c3138;--new:#5b9cf5;--repeat:#f0a04b;--ok:#4cc38a;--bad:#ef6b5c;--grid:#23272d;--tire:#6b7480}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+header{padding:16px;max-width:1100px;margin:0 auto;display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline}
+h1{font-size:22px;margin:0}
+#radio{color:var(--dim);font-size:13.5px;flex:1 1 300px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--card)}
+.seg button{font:inherit;font-size:13px;border:0;background:none;color:var(--dim);padding:5px 11px;cursor:pointer}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button.on{background:var(--new);color:#fff}
+.seg button:disabled{opacity:.6;cursor:wait}
+#radio b{font-weight:600}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;background:var(--bad)}
+.dot.on{background:var(--ok)}
+main{max-width:1100px;margin:0 auto;padding:0 16px 32px;display:grid;gap:14px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px}
+.tile,.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
+.tile .n{font-size:30px;font-weight:650;font-variant-numeric:tabular-nums}
+.tile .l{color:var(--dim);font-size:13px}
+h2{font-size:15px;margin:0 0 10px}
+.sub{color:var(--dim);font-size:13px;font-weight:400}
+.legend{display:flex;gap:14px;font-size:13px;color:var(--dim);margin-bottom:6px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+svg{display:block;width:100%;overflow:visible}
+svg text{fill:var(--dim);font-size:11px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:760px){.two{grid-template-columns:1fr}}
+table{width:100%;border-collapse:collapse;font-size:13.5px;font-variant-numeric:tabular-nums}
+th{text-align:left;color:var(--dim);font-weight:500;border-bottom:1px solid var(--line);padding:4px 6px}
+td{padding:4px 6px;border-bottom:1px solid var(--grid);white-space:nowrap}
+.scroll{overflow-x:auto;max-height:420px;overflow-y:auto}
+.tag{font-size:11.5px;padding:1px 6px;border-radius:9px;border:1px solid var(--line);color:var(--dim)}
+.tag.repeat{color:var(--repeat);border-color:var(--repeat)}
+.tag.new{color:var(--new);border-color:var(--new)}
+.tag.low{color:var(--bad);border-color:var(--bad)}
+.tile .n.low{color:var(--bad)}
+.pct{font-size:16px;font-weight:500;color:var(--dim);margin-left:4px}
+.hist{display:flex;gap:1px;align-items:flex-end;height:18px}
+.hist i{display:block;width:4px;background:var(--repeat);border-radius:1px 1px 0 0;min-height:1px;opacity:.9}
+.hist i.z{background:var(--grid)}
+#tip{position:fixed;pointer-events:none;background:var(--ink);color:var(--bg);font-size:12.5px;padding:5px 8px;border-radius:6px;display:none;z-index:5}
+.note{color:var(--dim);font-size:13px;margin:0}
+.empty{color:var(--dim);font-size:13.5px;padding:8px 0}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
+.sid{color:var(--new);cursor:pointer;text-decoration:underline dotted}
+.headrow{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:baseline;justify-content:space-between;margin-bottom:10px}
+.headrow h2{margin:0}
+input[type=search]{font:inherit;font-size:13.5px;padding:5px 9px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--ink);width:min(260px,100%)}
+#detail[hidden]{display:none}
+#detail .close{font:inherit;font-size:13px;border:1px solid var(--line);background:none;color:var(--dim);border-radius:7px;padding:3px 10px;cursor:pointer}
+.charts{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:760px){.charts{grid-template-columns:1fr}}
+.facts{color:var(--dim);font-size:13px;margin:0 0 10px}
+</style>
+</head>
+<body>
+<header><h1>Car counter</h1><div id="radio">Loading…</div><div class="seg" id="band" role="group" aria-label="Frequency"><button data-band="315" title="Most North American cars">315 MHz</button><button data-band="433" title="Some newer cars">433.92 MHz</button><button data-band="both" title="Switches between them every 2 min, so half the time on each">Both</button><button data-band="315w" title="315 MHz, leaving for a 75-second weather check every 15 minutes and a weekly weather station search">315 + weather</button></div></header>
+<main>
+  <div class="tiles">
+    <div class="tile"><div class="n" id="t-today">–</div><div class="l">Cars today</div></div>
+    <div class="tile"><div class="n" id="t-hour">–</div><div class="l">In the last hour</div></div>
+    <div class="tile"><div class="n" id="t-new">–</div><div class="l">New cars today</div></div>
+    <div class="tile"><div class="n" id="t-repeat">–</div><div class="l">Repeat trips today</div></div>
+    <div class="tile"><div class="n" id="t-known">–</div><div class="l">Cars known in all</div></div>
+    <div class="tile"><div class="n" id="t-low">–</div><div class="l" id="t-low-l">Low tires today</div></div>
+  </div>
+  <div class="card">
+    <h2>Cars per hour <span class="sub">· last 48 hours</span></h2>
+    <div class="legend"><span><i style="background:var(--new)"></i>New car</span><span><i style="background:var(--repeat)"></i>Seen before</span></div>
+    <svg id="hours" height="170"></svg>
+  </div>
+  <div class="card">
+    <h2>Cars per day <span class="sub">· last 30 days</span></h2>
+    <div class="legend"><span><i style="background:var(--new)"></i>New car</span><span><i style="background:var(--repeat)"></i>Seen before</span></div>
+    <svg id="days" height="150"></svg>
+  </div>
+  <div class="two">
+    <div class="card"><h2>Low tires <span class="sub" id="low-sub"></span></h2><table id="lowtable"></table><p class="note" style="margin-top:10px" id="low-note"></p></div>
+    <div class="card"><h2>Tire pressures <span class="sub">· each tire heard in the last 30 days, latest reading</span></h2>
+      <div class="legend"><span><i style="background:var(--tire)"></i>OK</span><span><i style="background:var(--bad)"></i>Low</span></div>
+      <svg id="spread" height="150"></svg></div>
+  </div>
+  <div class="two">
+    <div class="card"><h2>Heard now <span class="sub">· each tire sensor message, newest first</span></h2><div class="scroll"><table id="recent"></table></div></div>
+    <div class="card"><h2>Recent cars <span class="sub">· one row per pass</span></h2><div class="scroll"><table id="passes"></table></div></div>
+  </div>
+  <div class="two">
+    <div class="card"><h2>Regular cars <span class="sub">· seen more than once, with the hours they pass</span></h2><div class="scroll"><table id="regulars"></table></div></div>
+    <div class="card"><h2>Sensor types <span class="sub">· cars in the last 30 days</span></h2><div class="scroll"><table id="models"></table></div></div>
+  </div>
+  <div class="card" id="detail" hidden>
+    <div class="headrow"><h2 id="d-title">Sensor</h2><button class="close" id="d-close">Close</button></div>
+    <p class="facts" id="d-facts"></p>
+    <div class="charts">
+      <div><h2>Pressure <span class="sub">· psi, each message</span></h2><svg id="d-kpa" height="150"></svg></div>
+      <div><h2>Temperature <span class="sub">· °C, each message</span></h2><svg id="d-temp" height="150"></svg></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="headrow"><h2>Sensors <span class="sub">· every tire sensor heard, most recent first; click an ID for its history</span></h2><input type="search" id="q" placeholder="Filter by ID, type or car"></div>
+    <div class="scroll"><table id="sensors"></table></div>
+  </div>
+  <p class="note" id="about"></p>
+  <p class="note"><a href="/">Scanner</a> · <a href="/flights/">Flights</a> · <a href="/weather/">Weather</a> · <a href="/status/">Status</a></p>
+</main>
+<div id="tip"></div>
+<script>
+const $=id=>document.getElementById(id);
+const NS="http://www.w3.org/2000/svg";
+function el(tag,attrs={},text){const e=document.createElement(tag);for(const[k,v]of Object.entries(attrs))e.setAttribute(k,v);if(text!=null)e.textContent=text;return e;}
+function sv(tag,attrs={}){const e=document.createElementNS(NS,tag);for(const[k,v]of Object.entries(attrs))e.setAttribute(k,v);return e;}
+const hm=t=>new Date(t*1000).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
+const hms=t=>new Date(t*1000).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit",second:"2-digit"});
+const day=t=>new Date(t*1000).toLocaleDateString([], {month:"short",day:"numeric"});
+const ago=s=>s<60?`${Math.round(s)} s ago`:s<3600?`${Math.round(s/60)} min ago`:`${Math.round(s/3600)} h ago`;
+const carName=c=>c==null?"new":`Car ${c}`;
+const tip=$("tip");
+function showTip(e,text){tip.textContent=text;tip.style.display="block";const x=Math.min(e.clientX+12,innerWidth-tip.offsetWidth-8);tip.style.left=x+"px";tip.style.top=(e.clientY-36)+"px";}
+document.addEventListener("pointermove",e=>{if(!e.target.closest("[data-tip]"))tip.style.display="none";});
+
+function bars(svg,items,label,tipText,every){
+  svg.replaceChildren();
+  // Start at the first slot with cars (before that the counter wasn't running); empty slots after it stay as gaps
+  const first=items.findIndex(d=>d.new+d.repeat>0);
+  const skip=first>0?first:0;
+  items=items.slice(skip);
+  const W=svg.clientWidth||600,H=+svg.getAttribute("height"),L=28,B=20,T=6;
+  const max=Math.max(1,...items.map(d=>d.new+d.repeat));
+  const step=Math.max(1,Math.ceil(max/4)),top=step*Math.ceil(max/step);
+  const y=v=>H-B-(v/top)*(H-B-T), slot=(W-L)/items.length, bw=Math.max(2,Math.min(22,slot-2));
+  for(let v=0;v<=top;v+=step){svg.append(sv("line",{x1:L,x2:W,y1:y(v),y2:y(v),stroke:"var(--grid)"}));const t=sv("text",{x:L-6,y:y(v)+4,"text-anchor":"end"});t.textContent=v;svg.append(t);}
+  items.forEach((d,i)=>{
+    const x=L+i*slot+(slot-bw)/2;
+    if(d.new){svg.append(sv("rect",{x,y:y(d.new),width:bw,height:y(0)-y(d.new),rx:2,fill:"var(--new)"}));}
+    if(d.repeat){const y0=y(d.new)-(d.new?2:0);svg.append(sv("rect",{x,y:y0-(y(0)-y(d.repeat)),width:bw,height:y(0)-y(d.repeat),rx:2,fill:"var(--repeat)"}));}
+    const hit=sv("rect",{x:L+i*slot,y:T,width:slot,height:H-B-T,fill:"transparent","data-tip":1});
+    hit.addEventListener("pointermove",e=>showTip(e,tipText(d)));svg.append(hit);
+    if((i+skip)%every===0){const t=sv("text",{x:x+bw/2,y:H-5,"text-anchor":"middle"});t.textContent=label(d);svg.append(t);}
+  });
+}
+function table(id,head,rows,empty){
+  const t=$(id);t.replaceChildren();
+  if(!rows.length){const tr=el("tr");const td=el("td",{class:"empty",colspan:head.length},empty);tr.append(td);t.append(tr);return;}
+  const h=el("tr");head.forEach(x=>h.append(el("th",{},x)));t.append(h);
+  rows.forEach(r=>{const tr=el("tr");r.forEach(c=>{const td=el("td");if(c instanceof Node)td.append(c);else td.textContent=c??"–";tr.append(td);});t.append(tr);});
+}
+const tag=(cls,text)=>el("span",{class:"tag "+cls},text);
+function hist(h){const d=el("div",{class:"hist",title:"Passes by hour of day, midnight to midnight"});const m=Math.max(...h);h.forEach(v=>{const i=el("i",{class:v?"":"z"});i.style.height=(v?Math.max(3,18*v/m):1)+"px";d.append(i);});return d;}
+
+async function refresh(){
+  let s;try{s=await (await fetch("api/status",{cache:"no-store"})).json();}catch(e){$("radio").textContent="Can't reach the car store on sdrpi.";return;}
+  const r=s.radio, quiet=r.last_decode?s.now-r.last_decode:null;
+  if(!bandBusy) document.querySelectorAll("#band button").forEach(b=>b.classList.toggle("on",b.dataset.band===r.band));
+  $("radio").replaceChildren(el("span",{class:"dot"+(r.running?" on":"")}),
+    document.createTextNode(`${r.running?"Listening":r.porch_seen&&s.now-r.porch_seen>30?`porch-pi not reporting (last heard ${ago(s.now-r.porch_seen)}), was listening`:r.porch_seen?"Radio not running":"Waiting for porch-pi, set to listen"} on ${r.freqs.map(f=>f.replace("M"," MHz")).join(" and ")}${r.band==="315w"?`, leaving for a 75-second weather check every 15 min${r.doing&&r.doing!=="tires"?` (${r.doing} now)`:""}`:r.freqs.length>1?`, switching every ${r.hop_s/60} min`:""} · ${r.decodes_10min} messages in the last 10 min · last tire sensor ${r.last_tpms?ago(s.now-r.last_tpms):"not yet"}${r.open_passes?` · ${r.open_passes} sensor${r.open_passes>1?"s":""} in a car passing now`:""}`));
+  $("t-today").textContent=s.today.cars;$("t-hour").textContent=s.last_hour.cars;$("t-new").textContent=s.today.new;$("t-repeat").textContent=s.today.repeat;$("t-known").textContent=s.totals.vehicles;
+  const lowPsi=s.settings.low_psi, pct=x=>x.tires?Math.round(100*x.low/x.tires)+"%":"–";
+  $("t-low").replaceChildren(document.createTextNode(s.tires.today.low),el("span",{class:"pct"},s.tires.today.tires?`${pct(s.tires.today)}`:""));
+  $("t-low").classList.toggle("low",s.tires.today.low>0);
+  $("t-low-l").textContent=`Low tires today, of ${s.tires.today.tires} heard`;
+  $("low-sub").textContent=`· under ${lowPsi} psi`;
+  table("lowtable",["Period","Low tires","Tires heard","Share low"],[["Today",s.tires.today],["Last 7 days",s.tires.week],["Last 30 days",s.tires.month],["All time",s.tires.all]]
+    .map(([n,x])=>[n,x.low,x.tires,pct(x)]),"No pressures yet.");
+  $("low-note").textContent=`Each tire counts once per period, using its latest reading. Most cars call for 32–36 psi, and their warning light comes on at about 25% under, so ${lowPsi} psi flags tires a bit before that. Tires cool and lose about 1 psi per 5 °C, so cold mornings read lower.`;
+  spreadBars(s.pressure_spread,lowPsi);
+  bars($("hours"),s.hours,d=>new Date(d.t*1000).getHours()===0?day(d.t):String(new Date(d.t*1000).getHours()).padStart(2,"0"),
+    d=>`${day(d.t)} ${hm(d.t)}: ${d.new+d.repeat} cars (${d.new} new, ${d.repeat} seen before)`,innerWidth<600?12:6);
+  bars($("days"),s.days,d=>day(d.t),d=>`${day(d.t)}: ${d.new+d.repeat} cars (${d.new} new, ${d.repeat} seen before)`,innerWidth<600?10:5);
+  table("recent",["Time","Car","ID","Sensor type","Pressure","Temp","MHz","Signal"],s.recent.map(x=>[hms(x.t),carName(x.car),sid(x.sensor,x.ident),x.model,
+    x.kpa!=null&&x.kpa>=103&&x.kpa<=620?`${(x.kpa/6.895).toFixed(1)} psi`:null,x.temp_c!=null&&x.temp_c>=-40&&x.temp_c<=80?`${Math.round(x.temp_c)}°C`:null,x.mhz,x.rssi!=null?`${x.rssi.toFixed(0)} dB`:null]),
+    "Nothing heard since the tracker started.");
+  table("passes",["Time","Car","Sensor type","Sensor IDs","Messages",""],s.passes.map(p=>[hm(p.start),carName(p.car),p.model,mono(p.ids||"–"),p.readings,
+    p.stopped?tag("","stopped nearby"):p.repeat?tag("repeat","seen before"):tag("new","new")]),"No cars yet.");
+  table("regulars",["Car","Sensor type","Sensor IDs","Passes","Days","Last seen","Hours (0–23)"],s.regulars.map(v=>[carName(v.car),v.model,mono(v.ids.join(", ")),v.passes,v.days,
+    `${day(v.last)} ${hm(v.last)}`,hist(v.hours)]),"No car has been seen twice yet.");
+  sensorsData=s.sensors; drawSensors();
+  table("models",["Sensor type","Cars"],s.models.map(m=>[m.model,m.cars]),"None yet.");
+  const g=s.settings;
+  $("about").textContent=`Sensor types are rtl_433's protocol names, taken from the car each protocol was first decoded from; the same sensors are fitted to many brands, so "Citroen" or "Renault" doesn't mean that make of car. When a sensor only resembles a protocol its ID still reads correctly but its pressure and temperature don't, so readings outside 15–90 psi or −40–80 °C show as –. A car is counted when one or more of its tire sensors is heard; sensors heard within ${g.pass_gap_s} s of each other with the same sensor type are one car. A car first caught on one tire and later on another looks like two cars until they're heard together on ${g.merge_after} trips; then they're merged and the earlier trips become repeats.Tire sensors send about once a minute while driving, so many cars going by aren't heard, and the counts are a sample rather than a total. Cars heard for ${g.stopped_s/60} min or more are listed as stopped nearby and not counted. Sensor IDs identify a vehicle, so this page and its data stay on the home network; everything is deleted after ${g.keep_days} days. Sensors last heard before IDs were kept show \"?\" until they're heard again. Since ${s.totals.since?day(s.totals.since):"today"}: ${s.totals.passes} passes, ${s.totals.sensors} sensors.`;
+}
+const mono=t=>el("span",{class:"mono"},t);
+function sid(h,ident){const a=el("span",{class:"mono sid","data-sensor":h,title:"Show this sensor's history"},ident||"?");return a;}
+let sensorsData=[],lowKpa=28*6.895;
+function pressureCell(k){if(!psi(k))return null;const d=el("span",{},psi(k)+" psi ");if(k<lowKpa)d.append(tag("low","low"));return d;}
+function spreadBars(items,lowPsi){
+  lowKpa=lowPsi*6.895;
+  const svg=$("spread");svg.replaceChildren();
+  if(!items.length){const t=sv("text",{x:10,y:70});t.textContent="No pressures yet";svg.append(t);return;}
+  const lo=Math.min(items[0].psi,lowPsi-4),hi=Math.max(items[items.length-1].psi,40);
+  const bins=[];for(let b=lo;b<=hi;b+=2)bins.push({psi:b,tires:(items.find(i=>i.psi===b)||{tires:0}).tires});
+  const W=svg.clientWidth||400,H=+svg.getAttribute("height"),L=28,B=20,T=6,max=Math.max(1,...bins.map(b=>b.tires));
+  const step=Math.max(1,Math.ceil(max/4)),top=step*Math.ceil(max/step),y=v=>H-B-(v/top)*(H-B-T),slot=(W-L)/bins.length,bw=Math.max(2,slot-2);
+  for(let v=0;v<=top;v+=step){svg.append(sv("line",{x1:L,x2:W,y1:y(v),y2:y(v),stroke:"var(--grid)"}));const t=sv("text",{x:L-6,y:y(v)+4,"text-anchor":"end"});t.textContent=v;svg.append(t);}
+  bins.forEach((b,i)=>{const x=L+i*slot+1;
+    if(b.tires)svg.append(sv("rect",{x,y:y(b.tires),width:bw,height:y(0)-y(b.tires),rx:2,fill:b.psi+2<=lowPsi?"var(--bad)":"var(--tire)"}));
+    const hit=sv("rect",{x:L+i*slot,y:T,width:slot,height:H-B-T,fill:"transparent","data-tip":1});
+    hit.addEventListener("pointermove",e=>showTip(e,`${b.psi}–${b.psi+2} psi: ${b.tires} tire${b.tires===1?"":"s"}`));svg.append(hit);
+    if(i%2===0){const t=sv("text",{x:x+bw/2,y:H-5,"text-anchor":"middle"});t.textContent=b.psi;svg.append(t);}});
+  const t=sv("text",{x:W,y:H-5,"text-anchor":"end"});t.textContent="psi";svg.append(t);
+}
+const psi=k=>k!=null&&k>=103&&k<=620?(k/6.895).toFixed(1):null;
+function drawSensors(){
+  const q=$("q").value.trim().toLowerCase();
+  const rows=sensorsData.filter(x=>!q||[(x.ident||"?"),x.model,carName(x.car)].join(" ").toLowerCase().includes(q));
+  table("sensors",["ID","Sensor type","Car","First seen","Last seen","Passes","Days","Pressure","Avg temp","Hours (0–23)"],
+    rows.map(x=>[sid(x.sensor,x.ident),x.model,carName(x.car),`${day(x.first)} ${hm(x.first)}`,`${day(x.last)} ${hm(x.last)}`,x.passes,x.days,
+      pressureCell(x.latest_kpa),x.temp_c!=null?Math.round(x.temp_c)+"°C":null,hist(x.hours)]),q?"No sensor matches.":"None yet.");
+}
+$("q").addEventListener("input",drawSensors);
+function line(svg,pts,fmt){
+  svg.replaceChildren();
+  const W=svg.clientWidth||400,H=+svg.getAttribute("height"),L=38,B=20,T=8,R=8;
+  if(!pts.length){const t=sv("text",{x:L,y:H/2});t.textContent="No plausible readings";svg.append(t);return;}
+  let lo=Math.min(...pts.map(p=>p.v)),hi=Math.max(...pts.map(p=>p.v));if(hi-lo<2){lo-=1;hi+=1;}
+  const t0=pts[0].t,t1=Math.max(pts[pts.length-1].t,t0+1);
+  const x=t=>L+(t-t0)/(t1-t0)*(W-L-R),y=v=>H-B-(v-lo)/(hi-lo)*(H-B-T);
+  [lo,(lo+hi)/2,hi].forEach(v=>{svg.append(sv("line",{x1:L,x2:W-R,y1:y(v),y2:y(v),stroke:"var(--grid)"}));const t=sv("text",{x:L-5,y:y(v)+4,"text-anchor":"end"});t.textContent=fmt(v);svg.append(t);});
+  [t0,t1].forEach((tt,i)=>{const t=sv("text",{x:x(tt),y:H-5,"text-anchor":i?"end":"start"});t.textContent=day(tt);svg.append(t);});
+  if(pts.length>1)svg.append(sv("polyline",{points:pts.map(p=>x(p.t)+","+y(p.v)).join(" "),fill:"none",stroke:"var(--new)","stroke-width":2,"stroke-linejoin":"round"}));
+  pts.forEach(p=>{const c=sv("circle",{cx:x(p.t),cy:y(p.v),r:4,fill:"var(--new)",stroke:"var(--card)","stroke-width":2,"data-tip":1});
+    c.addEventListener("pointermove",e=>showTip(e,`${day(p.t)} ${hms(p.t)}: ${fmt(p.v)}`));svg.append(c);});
+}
+async function showSensor(h){
+  let d;try{const r=await fetch("api/sensor?s="+encodeURIComponent(h),{cache:"no-store"});if(!r.ok)return;d=await r.json();}catch(e){return;}
+  $("detail").hidden=false;
+  $("d-title").textContent=`Sensor ${d.ident||"?"} · ${d.model}`;
+  const passes=new Set(d.readings.map(r=>r.pass)).size;
+  $("d-facts").textContent=`${carName(d.car)} · first heard ${day(d.first)} ${hm(d.first)} · last heard ${day(d.last)} ${hm(d.last)} · ${d.readings.length} messages on ${passes} passes`;
+  line($("d-kpa"),d.readings.filter(r=>psi(r.kpa)).map(r=>({t:r.t,v:r.kpa/6.895})),v=>v.toFixed(1));
+  line($("d-temp"),d.readings.filter(r=>r.temp_c!=null&&r.temp_c>=-40&&r.temp_c<=80).map(r=>({t:r.t,v:r.temp_c})),v=>Math.round(v)+"°");
+  $("detail").scrollIntoView({behavior:"smooth",block:"start"});
+}
+document.addEventListener("click",e=>{const a=e.target.closest("[data-sensor]");if(a)showSensor(a.dataset.sensor);});
+$("d-close").addEventListener("click",()=>{$("detail").hidden=true;});
+let bandBusy=false;
+$("band").addEventListener("click",async e=>{
+  const b=e.target.closest("button"); if(!b||b.classList.contains("on")) return;
+  bandBusy=true; document.querySelectorAll("#band button").forEach(x=>{x.disabled=true;x.classList.toggle("on",x===b);});
+  try{ await fetch("api/band",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({band:b.dataset.band})}); }catch(err){}
+  setTimeout(async()=>{bandBusy=false;document.querySelectorAll("#band button").forEach(x=>x.disabled=false);await refresh();},2500);
+});
+refresh();setInterval(refresh,5000);addEventListener("resize",refresh);
+</script>
+</body>
+</html>

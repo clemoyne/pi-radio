@@ -1,0 +1,18 @@
+{
+ "_comment": "Copy to places.json (not published) and list places named in your exports with their rough distance in km from the scanner: [regex over agency and description, km]. First match wins; anything unmatched counts as 10 km. pearson_km is the distance to Toronto Pearson, whose frequencies are added by hand.",
+ "places": [
+  [
+   "downtown",
+   9
+  ],
+  [
+   "international airport|airport taxi",
+   15
+  ],
+  [
+   "university",
+   16
+  ]
+ ],
+ "pearson_km": 20
+}
