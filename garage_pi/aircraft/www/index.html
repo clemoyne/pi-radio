@@ -1,0 +1,878 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="/favicon.ico?v=2"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aircraft Log</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #6f6d68;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11,11,11,0.10);
+  --series: #2a78d6;
+  --series-gov: #eb6834;
+  --series-pol: #1baf7a;
+  --series-ladd: #eda100;
+  --series-private: #e87ba4;
+  --series-go-around: #008300;
+  --warn: #fab219;
+  --critical: #d03b3b;
+  --wash: rgba(42,120,214,0.10);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #f0efec;
+    --ink-2: #c3c2b7;
+    --muted: #989690;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255,255,255,0.10);
+    --series: #3987e5;
+    --series-gov: #d95926;
+    --series-pol: #199e70;
+    --series-ladd: #c98500;
+    --series-private: #d55181;
+    --series-go-around: #008300;
+    --wash: rgba(57,135,229,0.16);
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1120px; margin: 0 auto; padding: 24px 16px 48px; display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; }
+h1 { font-size: 22px; margin: 0; font-weight: 600; }
+h2 { font-size: 15px; margin: 0; font-weight: 600; }
+a { color: var(--series); }
+.note { color: var(--muted); font-size: 12.5px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; min-width: 0; }
+.card > .note { margin: 2px 0 12px; }
+.banner { display: none; background: var(--surface); border: 1px solid var(--warn); border-radius: 10px; padding: 10px 14px; }
+.banner.show { display: block; }
+#emergency-card.active { border: 2px solid var(--critical); }
+#emergency-card.active h2 { color: var(--critical); }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(138px, 1fr)); gap: 12px; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; }
+.tile b { display: block; font-size: 28px; font-weight: 600; line-height: 1.2; }
+.tile span { color: var(--ink-2); font-size: 13px; }
+a.tile { display: block; color: inherit; text-decoration: none; }
+a.tile:hover { border-color: var(--series); }
+a.tile:focus-visible { outline: 2px solid var(--series); outline-offset: 2px; }
+#daily, #private-daily, #go-around-daily { position: relative; }
+#daily svg, #private-daily svg, #go-around-daily svg { display: block; width: 100%; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0 0 10px; color: var(--ink-2); font-size: 12.5px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; }
+.form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.form input, .form select, .form button { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--axis); border-radius: 6px; padding: 6px 8px; min-height: 36px; }
+.form input[name=value], #q { flex: 1 1 160px; min-width: 0; }
+.form input[name=note] { flex: 2 1 200px; min-width: 0; }
+.form button { background: var(--series); border-color: var(--series); color: #fff; padding: 6px 14px; cursor: pointer; }
+.message { min-height: 20px; margin: 8px 0 0; font-size: 13px; color: var(--ink-2); }
+.message.error { color: var(--critical); }
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th { text-align: left; font-weight: 500; font-size: 12.5px; color: var(--ink-2); padding: 6px 10px; border-bottom: 1px solid var(--axis); white-space: nowrap; }
+td { padding: 7px 10px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+td.mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px; white-space: nowrap; }
+td.num, th.num { text-align: right; }
+.nowrap { white-space: nowrap; }
+.sub { color: var(--muted); font-size: 12.5px; }
+.watch { border-top: 1px solid var(--grid); padding: 10px 0; }
+.watch:first-child { border-top: 0; }
+.watch-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; align-items: baseline; }
+.watch-title { font-weight: 600; }
+.watch-head button { all: unset; cursor: pointer; color: var(--muted); font-size: 12.5px; padding: 2px 4px; }
+.watch-head button:hover { color: var(--ink); }
+.watch-head button:focus-visible { outline: 2px solid var(--series); }
+details summary { cursor: pointer; color: var(--ink-2); font-size: 13px; margin-top: 8px; }
+#tip { position: fixed; z-index: 10; pointer-events: none; display: none; background: var(--surface); color: var(--ink); border: 1px solid var(--axis); border-radius: 6px; padding: 6px 9px; font-size: 12.5px; box-shadow: 0 2px 8px rgba(0,0,0,0.18); }
+.empty { color: var(--muted); padding: 8px 0; }
+.card-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 16px; }
+tr.has-track { cursor: pointer; }
+tr.has-track:hover td { background: var(--wash); }
+.view { font: inherit; color: var(--series); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; }
+.view:focus-visible, #track-close:focus-visible { outline: 2px solid var(--series); outline-offset: 2px; }
+#track-dialog { width: min(920px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 16px; color: var(--ink); background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow-y: auto; }
+#track-dialog::backdrop { background: rgba(0,0,0,0.55); }
+#track-close { font: inherit; color: var(--ink-2); background: none; border: 1px solid var(--axis); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+#track-map { height: min(52vh, 460px); margin-top: 12px; border-radius: 6px; background: var(--grid); overflow: hidden; }
+#track-map .ol-attribution { font-size: 11px; }
+#track-legend { margin: 10px 0 0; }
+#track-readout { min-height: 20px; margin: 10px 0 0; font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+#track-profile svg { display: block; width: 100%; touch-action: none; }
+@media (prefers-color-scheme: dark) {
+  .osm-tiles { filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9); }
+}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Aircraft Log</h1>
+    <span class="note"><a href="/skyaware/">SkyAware</a> · <a href="display/">Display</a> · <a href="/bluetooth/">Bluetooth tracker</a> · <a href="http://sdrpi.local:8080/flights/">Flights</a> · <a href="http://sdrpi.local:8080/weather/">Weather</a> · <a href="/status/">Status</a> · <a href="http://sdrpi.local:8080/">sdrpi</a> · <span id="updated">Loading…</span></span>
+  </header>
+  <div class="banner" id="banner" role="status"></div>
+
+  <section class="card" id="emergency-card" aria-live="polite">
+    <h2 id="emergency-title">Emergency squawks in the last 30 days</h2>
+    <p class="note" id="emergency-note"></p>
+    <div class="scroll"><table id="emergency-table"></table></div>
+  </section>
+
+  <section class="tiles" aria-label="Summary">
+    <a class="tile" href="/skyaware/" title="Open the live map in SkyAware"><b id="t-now">–</b><span>In range now</span></a>
+    <a class="tile" href="#log-card" data-view="recent"><b id="t-recent">–</b><span>Heard in the last 30 min</span></a>
+    <a class="tile" href="#log-card" data-view="visits"><b id="t-visits">–</b><span>Flights logged, 24 hours</span></a>
+    <a class="tile" href="#interesting-card" data-view="mil"><b id="t-mil">–</b><span>Military, 24 hours</span></a>
+    <a class="tile" href="#interesting-card" data-view="gov"><b id="t-gov">–</b><span>Government, 24 hours</span></a>
+    <a class="tile" href="#interesting-card" data-view="pol"><b id="t-pol">–</b><span>Police, 24 hours</span></a>
+    <a class="tile" href="#interesting-card" data-view="ladd"><b id="t-ladd">–</b><span>On opt-out list, 24 hours</span></a>
+    <a class="tile" href="#interesting-card" data-view="cargo"><b id="t-cargo">–</b><span>Cargo, 24 hours</span></a>
+    <a class="tile" href="#interesting-card" data-view="private"><b id="t-private">–</b><span id="t-private-label">Private aircraft today</span></a>
+    <a class="tile" href="#interesting-card" data-view="go_around"><b id="t-go-arounds">–</b><span>Go-arounds today</span></a>
+  </section>
+
+  <section class="card">
+    <h2>Watched flights</h2>
+    <p class="note">Flights you add are kept for as long as they stay on this list, and also match anything already in the log. Airline flight numbers don't always match what the aircraft broadcasts, so a registration is the most reliable choice.</p>
+    <form class="form" id="watch-form" autocomplete="off">
+      <select name="kind" aria-label="What to watch">
+        <option value="callsign">Flight</option>
+        <option value="reg">Registration</option>
+        <option value="hex">ICAO hex</option>
+      </select>
+      <input name="value" required maxlength="12" placeholder="AC123, C-FABC or c01234" aria-label="Flight, registration or hex">
+      <input name="date" type="date" aria-label="Only this date (optional)" title="Optional: only match this date">
+      <input name="note" maxlength="120" placeholder="Note (optional)" aria-label="Note">
+      <button type="submit">Add</button>
+    </form>
+    <p class="message" id="watch-message" role="status"></p>
+    <div id="watches"></div>
+  </section>
+
+  <section class="card">
+    <h2>Military, government, police and opt-out flights per day</h2>
+    <p class="note">Last 30 days, by local day. Each flight counts once, so an opt-out flight that is also military counts as military.</p>
+    <div class="legend" id="daily-legend"></div>
+    <div id="daily"></div>
+    <details><summary>Show as table</summary><div class="scroll"><table id="daily-table"></table></div></details>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>Private aircraft per day</h2>
+      <div class="form">
+        <select id="private-range" aria-label="Distance from this receiver">
+          <option value="5">Within 5 km</option>
+          <option value="10" selected>Within 10 km</option>
+          <option value="25">Within 25 km</option>
+          <option value="0">Anywhere in range</option>
+        </select>
+      </div>
+    </div>
+    <p class="note">Each aircraft counts once per day, at its closest point to this receiver. This is a best guess: "private" means not military, government or police, and either flying under its own registration or registered to an individual, LLC, partnership or co-owners (which catches most fractional and charter jets). Airliner-sized aircraft are left out of the owner rule. Aircraft with no position only count under "Anywhere in range".</p>
+    <div id="private-daily"></div>
+    <details><summary>Show as table</summary><div class="scroll"><table id="private-table"></table></div></details>
+  </section>
+
+  <section class="card">
+    <h2>Airline go-arounds per day</h2>
+    <p class="note">A best guess from each track: an airline flight descends to within 2,500 ft of a scheduled airport's elevation, within 15 km of it, then climbs at least 1,000 ft without a ground report in between. Each flight counts once. Altitudes are barometric, so this can occasionally miss one or flag an unusual approach.</p>
+    <div id="go-around-daily"></div>
+    <details><summary>Show as table</summary><div class="scroll"><table id="go-around-table"></table></div></details>
+  </section>
+
+  <section class="card" id="interesting-card">
+    <div class="card-head">
+      <h2>Interesting aircraft</h2>
+      <div class="form">
+        <select id="type-filter" aria-label="Filter by type">
+          <option value="">All types</option>
+          <option value="mil">Military</option>
+          <option value="gov">Government</option>
+          <option value="pol">Police</option>
+          <option value="ladd">On opt-out list</option>
+          <option value="emergency">Emergency squawk</option>
+          <option value="private">Private</option>
+          <option value="cargo">Cargo</option>
+          <option value="helicopter">Helicopters</option>
+          <option value="go_around">Go-arounds</option>
+        </select>
+      </div>
+    </div>
+    <p class="note" id="interesting-note"></p>
+    <div class="scroll"><table id="interesting"></table></div>
+  </section>
+
+  <section class="card" id="log-card">
+    <h2>Full log</h2>
+    <p class="note" id="search-note">Search every flight from the last 30 days. Shows up to 200 results.</p>
+    <form class="form" id="search-form">
+      <input id="q" type="search" placeholder="Callsign, registration, hex, owner, state or model" aria-label="Search the log">
+      <select id="group" aria-label="Group">
+        <option value="">All aircraft</option>
+        <option value="tagged">All tagged</option>
+        <option value="mil">Military</option>
+        <option value="gov">Government</option>
+        <option value="pol">Police</option>
+        <option value="ladd">On opt-out list</option>
+        <option value="emergency">Emergency squawk</option>
+        <option value="private">Private</option>
+        <option value="cargo">Cargo</option>
+      </select>
+      <button type="submit">Search</button>
+    </form>
+    <div class="scroll" style="margin-top:8px"><table id="results"></table></div>
+  </section>
+</main>
+<div id="tip" role="tooltip"></div>
+<dialog id="track-dialog" aria-labelledby="track-title">
+  <div class="card-head">
+    <div><h2 id="track-title"></h2><div id="track-info"></div></div>
+    <button id="track-close" type="button">Close</button>
+  </div>
+  <div id="track-map"></div>
+  <div class="legend" id="track-legend"></div>
+  <p id="track-readout" role="status"></p>
+  <div id="track-profile"></div>
+  <details id="track-details"><summary>Show as table</summary><div class="scroll"><table id="track-table"></table></div></details>
+</dialog>
+
+<script>
+const $ = id => document.getElementById(id);
+const fmt = new Intl.NumberFormat();
+const SVG = "http://www.w3.org/2000/svg";
+const GROUP_NAMES = {mil: "Military", gov: "Government", pol: "Police"};
+const KIND_NAMES = {callsign: "Flight", reg: "Registration", hex: "Hex"};
+const EMERGENCY_NAMES = {7500: "hijacking", 7600: "radio failure", 7700: "emergency"};
+let data = null;
+
+// Log values come from radio broadcasts and form input, so they only ever go in via textContent.
+function el(tag, attrs, ...kids) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === "class") node.className = v; else node.setAttribute(k, v);
+  }
+  for (const kid of kids) {
+    if (kid !== null && kid !== undefined) node.append(kid);
+  }
+  return node;
+}
+function svg(tag, attrs, text) {
+  const node = document.createElementNS(SVG, tag);
+  for (const [k, v] of Object.entries(attrs || {})) node.setAttribute(k, v);
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+function stamp(t) { return new Date(t * 1000).toLocaleString([], {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"}); }
+function clock(t) { return new Date(t * 1000).toLocaleTimeString([], {hour: "numeric", minute: "2-digit"}); }
+function dayLabel(t) { return new Date(t * 1000).toLocaleDateString([], {month: "short", day: "numeric"}); }
+function localDate(t) { return new Date(t * 1000).toLocaleDateString([], {month: "short", day: "numeric", year: "numeric"}); }
+function duration(s) { return s < 60 ? "under 1 min" : s < 5400 ? Math.round(s / 60) + " min" : (s / 3600).toFixed(1) + " hr"; }
+
+function showTip(kids, x, y) {
+  const tip = $("tip");
+  tip.replaceChildren(...kids);
+  tip.style.display = "block";
+  const r = tip.getBoundingClientRect();
+  tip.style.left = Math.max(8, Math.min(x + 12, innerWidth - r.width - 8)) + "px";
+  tip.style.top = Math.max(8, Math.min(y - r.height - 10, innerHeight - r.height - 8)) + "px";
+}
+function hideTip() { $("tip").style.display = "none"; }
+
+const DAILY_SERIES = [
+  ["mil", "Military", "var(--series)"],
+  ["gov", "Government", "var(--series-gov)"],
+  ["pol", "Police", "var(--series-pol)"],
+  ["ladd", "On opt-out list", "var(--series-ladd)"],
+];
+const PRIVATE_SERIES = [["count", "Private aircraft", "var(--series-private)"]];
+const GO_AROUND_SERIES = [["count", "Go-arounds", "var(--series-go-around)"]];
+
+function dayStarts() {
+  const now = new Date(data.generated * 1000);
+  const starts = [];
+  for (let back = 29; back >= 0; back--) {
+    starts.push(new Date(now.getFullYear(), now.getMonth(), now.getDate() - back).getTime() / 1000);
+  }
+  return starts;
+}
+
+function localDays() {
+  const days = dayStarts().map(day => ({day, mil: 0, gov: 0, pol: 0, ladd: 0}));
+  for (const [hour, mil, gov, pol, ladd] of data.hourly) {
+    const day = days.slice().reverse().find(d => hour >= d.day);
+    if (day) { day.mil += mil; day.gov += gov; day.pol += pol; day.ladd += ladd; }
+  }
+  return days;
+}
+
+function privateDays() {
+  const limit = Number($("private-range").value);
+  const days = dayStarts().map(day => ({day, count: 0, seen: new Set()}));
+  for (const [time, hex, distance] of data.private) {
+    if (limit && (distance === null || distance > limit)) continue;
+    const day = days.slice().reverse().find(d => time >= d.day);
+    if (day) day.seen.add(hex);
+  }
+  days.forEach(d => { d.count = d.seen.size; });
+  return days;
+}
+
+function renderDaily() {
+  renderBars($("daily"), localDays(), DAILY_SERIES, $("daily-table"), "tagged flights");
+  $("daily-legend").replaceChildren(...DAILY_SERIES.map(([, label, color]) => el("span", null, el("i", {style: `background:${color}`}), label)));
+}
+
+function renderPrivate() {
+  const days = privateDays();
+  renderBars($("private-daily"), days, PRIVATE_SERIES, $("private-table"), "private aircraft");
+  const range = $("private-range").selectedOptions[0].textContent.toLowerCase();
+  $("t-private").textContent = fmt.format(days[days.length - 1].count);
+  $("t-private-label").textContent = `Private aircraft today, ${range}`;
+}
+
+function renderGoArounds() {
+  const days = dayStarts().map(day => ({day, count: 0}));
+  for (const time of data.go_arounds) {
+    const day = days.slice().reverse().find(d => time >= d.day);
+    if (day) day.count++;
+  }
+  renderBars($("go-around-daily"), days, GO_AROUND_SERIES, $("go-around-table"), "airline go-arounds");
+  $("t-go-arounds").textContent = fmt.format(days[days.length - 1].count);
+}
+
+function renderBars(box, days, series, table, name) {
+  const dayTotal = d => series.reduce((sum, [key]) => sum + d[key], 0);
+  const width = Math.max(280, box.clientWidth);
+  const height = 170, m = {t: 10, r: 8, b: 24, l: 34};
+  const max = Math.max(4, ...days.map(dayTotal));
+  const step = Math.ceil(max / 4);
+  const top = step * 4;
+  const y = v => height - m.b - v * (height - m.t - m.b) / top;
+  const slot = (width - m.l - m.r) / days.length;
+  const root = svg("svg", {viewBox: `0 0 ${width} ${height}`, height, role: "img", "aria-label": `Bar chart of ${name} per day for the last 30 days`});
+  for (let v = 0; v <= top; v += step) {
+    root.append(svg("line", {x1: m.l, x2: width - m.r, y1: y(v), y2: y(v), stroke: v ? "var(--grid)" : "var(--axis)"}));
+    root.append(svg("text", {x: m.l - 6, y: y(v) + 4, "text-anchor": "end", "font-size": 11.5, fill: "var(--muted)", style: "font-variant-numeric:tabular-nums"}, v));
+  }
+  const every = width < 520 ? 10 : 5;
+  days.forEach((d, i) => {
+    const x = m.l + i * slot;
+    const barWidth = Math.max(2, Math.min(14, slot - 2));
+    const bx = x + (slot - barWidth) / 2;
+    const present = series.filter(([key]) => d[key] > 0);
+    let running = 0;
+    present.forEach(([key, , color], index) => {
+      const bottom = y(running) - (index ? 2 : 0);
+      running += d[key];
+      const by = Math.min(y(running), bottom - 2);
+      const r = index === present.length - 1 ? Math.min(4, barWidth / 2, bottom - by) : 0;
+      root.append(svg("path", {d: `M${bx} ${bottom}V${by + r}Q${bx} ${by} ${bx + r} ${by}H${bx + barWidth - r}Q${bx + barWidth} ${by} ${bx + barWidth} ${by + r}V${bottom}Z`, fill: color}));
+    });
+    if ((days.length - 1 - i) % every === 0) root.append(svg("text", {x: x + slot / 2, y: height - 7, "text-anchor": "middle", "font-size": 11.5, fill: "var(--muted)"}, dayLabel(d.day)));
+    const summary = series.map(([key, label]) => `${label}: ${d[key]}`);
+    const hit = svg("rect", {x, y: 0, width: slot, height: height - m.b, fill: "transparent", tabindex: 0, "aria-label": `${dayLabel(d.day)}. ${summary.join(", ")}`});
+    const tip = (cx, cy) => showTip([el("b", null, dayLabel(d.day)), ...summary.flatMap(line => [el("br"), line])], cx, cy);
+    hit.addEventListener("pointermove", e => tip(e.clientX, e.clientY));
+    hit.addEventListener("focus", () => { const b = hit.getBoundingClientRect(); tip(b.left, b.top + 40); });
+    hit.addEventListener("pointerleave", hideTip);
+    hit.addEventListener("blur", hideTip);
+    root.append(hit);
+  });
+  box.replaceChildren(root);
+  table.replaceChildren(el("tr", null, el("th", null, "Day"), ...series.map(([, label]) => el("th", {class: "num"}, label))),
+    ...days.slice().reverse().map(d => el("tr", null, el("td", null, dayLabel(d.day)), ...series.map(([key]) => el("td", {class: "num"}, String(d[key]))))));
+}
+$("private-range").addEventListener("change", () => data && renderPrivate());
+
+function groupText(v) {
+  const parts = [];
+  if (v.emergency) parts.push(`Squawked ${v.emergency} (${EMERGENCY_NAMES[v.emergency]})`);
+  if (v.go_around) parts.push(`Go-around at ${v.go_around}`);
+  if (v.cargo) parts.push(`Cargo (${v.cargo})`);
+  if (v.grp) parts.push(GROUP_NAMES[v.grp]);
+  if (v.private) parts.push("Private");
+  if (v.ladd) parts.push("On opt-out list");
+  return parts.join(", ") || "–";
+}
+function altitudeText(v) {
+  if (v.alt_min === null || v.alt_min === undefined) return "–";
+  return v.alt_min === v.alt_max ? `${fmt.format(v.alt_min)} ft` : `${fmt.format(v.alt_min)}–${fmt.format(v.alt_max)} ft`;
+}
+function aircraftDetails(v) {
+  const build = [v.make, v.model].filter(Boolean).join(" ") + (v.year ? ` (${v.year})` : "");
+  const owner = v.registrant || v.operator || v.registrant_type;
+  const place = [v.owner_state, v.owner_country].filter(Boolean).join(", ");
+  return [build, owner, place].filter(Boolean).map(text => el("div", {class: "sub"}, text));
+}
+
+// How many earlier flights the log holds for this aircraft; clicking lists all of them in the Full log
+function seenBeforeCell(v) {
+  if (v.seen_before === undefined || v.seen_before === null) return "–";
+  if (!v.seen_before) return el("span", {class: "sub"}, "First time");
+  const button = el("button", {class: "view", type: "button", "aria-label": `Show all ${v.seen_before + 1} flights of ${v.reg || v.hex}`},
+    `${fmt.format(v.seen_before)}×`);
+  button.addEventListener("click", e => {
+    e.stopPropagation();  // the row's own click opens the track
+    $("q").value = v.hex;
+    $("group").value = "";
+    logPeriod = null;
+    search();
+    $("log-card").scrollIntoView({behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"});
+  });
+  return button;
+}
+
+function visitTable(visits) {
+  const head = el("tr", null, ...["When", "Callsign", "Registration", "Type", "Group", "Seen before", "Altitude", "Closest", "Time in range", "Track"]
+    .map((h, i) => el("th", i === 5 || (i >= 7 && i < 9) ? {class: "num", title: i === 5 ? "Earlier flights by this aircraft in the last 30 days" : null} : null, h)));
+  const rows = visits.map(v => {
+    const hasTrack = v.track_points > 0 && v.id !== null;
+    const row = el("tr", hasTrack ? {class: "has-track"} : null,
+      el("td", {class: "nowrap"}, stamp(v.first_seen)),
+      el("td", {class: "mono"}, v.callsign || "–"),
+      el("td", {class: "mono"}, v.reg || "–", el("div", {class: "sub"}, v.hex)),
+      el("td", null, v.type || "–", ...aircraftDetails(v)),
+      el("td", null, groupText(v), v.source ? el("div", {class: "sub"}, v.source) : null),
+      el("td", {class: "num nowrap"}, seenBeforeCell(v)),
+      el("td", {class: "nowrap"}, altitudeText(v)),
+      el("td", {class: "num nowrap"}, v.min_dist_km === null ? "–" : `${v.min_dist_km} km`),
+      el("td", {class: "num nowrap"}, duration(v.last_seen - v.first_seen)),
+      el("td", null, hasTrack ? el("button", {class: "view", type: "button", "aria-label": `View track of ${v.callsign || v.reg || v.hex}`}, "View") : "–"));
+    if (hasTrack) row.addEventListener("click", () => { if (getSelection().isCollapsed) openTrack(v.id); });
+    return row;
+  });
+  return [head, ...rows];
+}
+
+const INTERESTING_NOTE = '"On opt-out list" uses an unofficial archive of the FAA LADD list, so it can be out of date. Tags come from plane-alert-db, military ID blocks and callsigns.';
+// A period limits a list to what a summary tile counted, until it is cleared
+let interestingPeriod = null, logPeriod = null;
+function periodParams(period) {
+  if (!period) return {};
+  const params = {since: String(Math.floor(period.since)), field: period.field || "first_seen"};
+  if (period.km) params.km = String(period.km);
+  return params;
+}
+function clearButton(text, onClick) {
+  const button = el("button", {class: "view", type: "button"}, text);
+  button.addEventListener("click", onClick);
+  return button;
+}
+function countText(visits, limit, perAircraft) {
+  const noun = perAircraft ? "aircraft, latest flight of each" : visits.length === 1 ? "flight" : "flights";
+  return `${fmt.format(visits.length)}${visits.length >= limit ? "+" : ""} ${noun}, newest first.`;
+}
+// The private tile counts aircraft, not flights, so its list keeps each aircraft's latest flight
+function latestPerAircraft(visits) { const seen = new Set(); return visits.filter(v => !seen.has(v.hex) && seen.add(v.hex)); }
+
+function showInteresting(visits, limit, emptyText, period) {
+  $("interesting").replaceChildren(...(visits.length ? visitTable(visits) : [el("tr", null, el("td", {class: "empty"}, emptyText))]));
+  if (period) {
+    $("interesting-note").replaceChildren(`${$("type-filter").selectedOptions[0].textContent} ${period.label}: ${countText(visits, limit, period.perAircraft)} `,
+      clearButton("Show the last 30 days", () => { interestingPeriod = null; renderInteresting(); }));
+  } else {
+    $("interesting-note").textContent = `The latest ${limit} matching flights from the last 30 days, with a track when one was saved. ${INTERESTING_NOTE}`;
+  }
+}
+
+let filterRequest = 0;
+async function renderInteresting() {
+  const group = $("type-filter").value;
+  const request = ++filterRequest;
+  if (!group) { interestingPeriod = null; showInteresting(data.interesting, 300, "No tagged aircraft logged yet."); return; }
+  try {
+    const result = await api("search?" + new URLSearchParams({group, ...periodParams(interestingPeriod)}));
+    const visits = interestingPeriod && interestingPeriod.perAircraft ? latestPerAircraft(result.visits) : result.visits;
+    if (request === filterRequest) showInteresting(visits, 200, interestingPeriod ? "None in this period." : "No flights of this type logged yet.", interestingPeriod);
+  } catch (err) {
+    if (request === filterRequest) $("interesting-note").textContent = err.message;
+  }
+}
+$("type-filter").addEventListener("change", () => { interestingPeriod = null; renderInteresting(); });
+
+function todayStart() { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime() / 1000; }
+const TILE_VIEWS = {
+  recent: () => ({target: "log", label: "heard in the last 30 min", since: data.generated - 1800, field: "last_seen"}),
+  visits: () => ({target: "log", label: "first heard in the last 24 hours", since: data.generated - 86400}),
+  mil: () => ({target: "interesting", group: "mil", label: "in the last 24 hours", since: data.generated - 86400}),
+  gov: () => ({target: "interesting", group: "gov", label: "in the last 24 hours", since: data.generated - 86400}),
+  pol: () => ({target: "interesting", group: "pol", label: "in the last 24 hours", since: data.generated - 86400}),
+  ladd: () => ({target: "interesting", group: "ladd", label: "in the last 24 hours", since: data.generated - 86400}),
+  cargo: () => ({target: "interesting", group: "cargo", label: "in the last 24 hours", since: data.generated - 86400}),
+  private: () => { const km = Number($("private-range").value); return {target: "interesting", group: "private", label: km ? `today, within ${km} km` : "today", since: todayStart(), km, perAircraft: true}; },
+  go_around: () => ({target: "interesting", group: "go_around", label: "today", since: todayStart(), field: "go_around_at"}),
+};
+document.querySelectorAll("a.tile[data-view]").forEach(tile => tile.addEventListener("click", e => {
+  if (!data) return;
+  e.preventDefault();
+  const view = TILE_VIEWS[tile.dataset.view]();
+  if (view.target === "log") {
+    logPeriod = view;
+    $("q").value = "";
+    $("group").value = "";
+    search();
+    $("log-card").scrollIntoView({behavior: "smooth"});
+  } else {
+    interestingPeriod = view;
+    $("type-filter").value = view.group;
+    renderInteresting();
+    $("interesting-card").scrollIntoView({behavior: "smooth"});
+  }
+}));
+
+const TRACK_GAP_SECONDS = 300;
+const trackView = {map: null, source: null, marker: null, points: [], visit: null};
+let olLoading = null;
+
+function loadOl() {
+  if (!olLoading) {
+    olLoading = new Promise((resolve, reject) => {
+      document.head.append(el("link", {rel: "stylesheet", href: "ol/ol.css"}));
+      const script = el("script", {src: "ol/ol.js"});
+      script.onload = resolve;
+      script.onerror = () => { olLoading = null; reject(new Error("The map library didn't load.")); };
+      document.head.append(script);
+    });
+  }
+  return olLoading;
+}
+
+function token(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+function trackColor(v) { return token(v.grp === "mil" ? "--series" : v.grp === "pol" ? "--series-pol" : v.grp === "gov" ? "--series-gov" : v.ladd ? "--series-ladd" : v.private ? "--series-private" : v.go_around ? "--series-go-around" : "--ink-2"); }
+
+// Splits where the aircraft went unheard, so a gap isn't drawn as if it flew straight across it.
+function trackSegments(points) {
+  const segments = [];
+  points.forEach((p, i) => {
+    if (i === 0 || p[0] - points[i - 1][0] > TRACK_GAP_SECONDS) segments.push([]);
+    segments[segments.length - 1].push(p);
+  });
+  return segments;
+}
+
+function dot(radius, fill, stroke) {
+  return new ol.style.Style({image: new ol.style.Circle({radius, fill: new ol.style.Fill({color: fill}), stroke: new ol.style.Stroke({color: stroke, width: 2})})});
+}
+
+function ensureMap() {
+  if (trackView.map) return;
+  trackView.source = new ol.source.Vector();
+  trackView.marker = new ol.Feature();
+  const overlay = new ol.source.Vector({features: [trackView.marker]});
+  trackView.map = new ol.Map({
+    target: "track-map",
+    layers: [
+      new ol.layer.Tile({source: new ol.source.OSM(), className: "osm-tiles"}),
+      new ol.layer.Vector({source: trackView.source, className: "track-lines"}),
+      new ol.layer.Vector({source: overlay, className: "track-marker"}),
+    ],
+    view: new ol.View({center: ol.proj.fromLonLat([0, 0]), zoom: 2}),
+  });
+  trackView.map.on("pointermove", e => {
+    if (e.dragging || !trackView.points.length) return;
+    let best = -1, bestDistance = 400;
+    trackView.points.forEach((p, i) => {
+      const pixel = trackView.map.getPixelFromCoordinate(p.coordinate);
+      if (!pixel) return;
+      const distance = (pixel[0] - e.pixel[0]) ** 2 + (pixel[1] - e.pixel[1]) ** 2;
+      if (distance < bestDistance) { bestDistance = distance; best = i; }
+    });
+    if (best >= 0) highlightPoint(best);
+  });
+}
+
+function drawMap(points, visit) {
+  ensureMap();
+  const color = trackColor(visit);
+  const ink = token("--ink"), surface = token("--surface");
+  const coordinates = points.map(p => ol.proj.fromLonLat([p[2], p[1]]));
+  trackView.points = points.map((p, i) => ({coordinate: coordinates[i], point: p}));
+  let offset = 0;
+  const lines = trackSegments(points).map(segment => {
+    const line = coordinates.slice(offset, offset + segment.length);
+    offset += segment.length;
+    return line;
+  });
+  const features = [];
+  if (points.length > 1) {
+    const line = new ol.Feature(new ol.geom.MultiLineString(lines));
+    line.setStyle([new ol.style.Style({stroke: new ol.style.Stroke({color: surface, width: 6})}), new ol.style.Style({stroke: new ol.style.Stroke({color, width: 2.5})})]);
+    features.push(line);
+  }
+  const point = (coordinate, style) => { const feature = new ol.Feature(new ol.geom.Point(coordinate)); feature.setStyle(style); return feature; };
+  features.push(point(coordinates[0], dot(6, surface, color)), point(coordinates[coordinates.length - 1], dot(6, color, surface)));
+  if (data && data.receiver) features.push(point(ol.proj.fromLonLat([data.receiver[1], data.receiver[0]]), new ol.style.Style({image: new ol.style.RegularShape({points: 4, radius: 8, angle: 0, fill: new ol.style.Fill({color: ink}), stroke: new ol.style.Stroke({color: surface, width: 2})})})));
+  trackView.source.clear();
+  trackView.source.addFeatures(features);
+  trackView.marker.setGeometry(undefined);
+  trackView.marker.setStyle(dot(7, ink, surface));
+  trackView.map.updateSize();
+  const extent = ol.extent.boundingExtent(coordinates);
+  trackView.map.getView().fit(extent, {padding: [32, 32, 32, 32], maxZoom: 11});
+}
+
+function highlightPoint(index) {
+  const entry = trackView.points[index];
+  if (trackView.marker && entry && entry.coordinate) trackView.marker.setGeometry(new ol.geom.Point(entry.coordinate));
+  const p = (entry || {point: null}).point;
+  if (p) $("track-readout").textContent = pointText(p);
+}
+
+function pointText(p) {
+  const parts = [new Date(p[0] * 1000).toLocaleTimeString([], {hour: "numeric", minute: "2-digit", second: "2-digit"})];
+  parts.push(p[3] === null ? "altitude unknown" : p[3] === 0 ? "on the ground" : `${fmt.format(p[3])} ft`);
+  if (p[4] !== null) parts.push(`${Math.round(p[4])} kt`);
+  return parts.join(" · ");
+}
+
+function renderProfile(points, visit) {
+  const box = $("track-profile");
+  const known = points.filter(p => p[3] !== null);
+  if (known.length < 2) { box.replaceChildren(); return; }
+  const width = Math.max(280, box.clientWidth), height = 124, m = {t: 12, r: 8, b: 22, l: 68};
+  const start = points[0][0], end = Math.max(points[points.length - 1][0], start + 1);
+  const top = Math.max(1000, Math.ceil(Math.max(...known.map(p => p[3])) / 1000) * 1000);
+  const x = t => m.l + (t - start) * (width - m.l - m.r) / (end - start);
+  const y = a => height - m.b - a * (height - m.t - m.b) / top;
+  const root = svg("svg", {viewBox: `0 0 ${width} ${height}`, height, role: "img", "aria-label": "Altitude over time for this flight"});
+  for (const v of [0, top / 2, top]) {
+    root.append(svg("line", {x1: m.l, x2: width - m.r, y1: y(v), y2: y(v), stroke: v ? "var(--grid)" : "var(--axis)"}));
+    root.append(svg("text", {x: m.l - 6, y: y(v) + 4, "text-anchor": "end", "font-size": 11.5, fill: "var(--muted)"}, `${fmt.format(v)} ft`));
+  }
+  root.append(svg("text", {x: m.l, y: height - 6, "font-size": 11.5, fill: "var(--muted)"}, clock(start)));
+  root.append(svg("text", {x: width - m.r, y: height - 6, "text-anchor": "end", "font-size": 11.5, fill: "var(--muted)"}, clock(end)));
+  const path = trackSegments(points).map(segment => {
+    let pen = "M";
+    return segment.map(p => {
+      if (p[3] === null) { pen = "M"; return ""; }
+      const part = `${pen}${x(p[0]).toFixed(1)} ${y(p[3]).toFixed(1)}`;
+      pen = "L";
+      return part;
+    }).join("");
+  }).join("");
+  root.append(svg("path", {d: path, fill: "none", stroke: trackColor(visit), "stroke-width": 2, "stroke-linejoin": "round"}));
+  const cross = svg("line", {y1: m.t, y2: height - m.b, stroke: "var(--axis)", visibility: "hidden"});
+  root.append(cross);
+  const hit = svg("rect", {x: m.l, y: 0, width: width - m.l - m.r, height: height - m.b, fill: "transparent"});
+  hit.addEventListener("pointermove", e => {
+    const b = root.getBoundingClientRect();
+    const t = start + (e.clientX - b.left - m.l) * (end - start) / (width - m.l - m.r);
+    let best = 0;
+    points.forEach((p, i) => { if (Math.abs(p[0] - t) < Math.abs(points[best][0] - t)) best = i; });
+    cross.setAttribute("x1", x(points[best][0]));
+    cross.setAttribute("x2", x(points[best][0]));
+    cross.setAttribute("visibility", "visible");
+    highlightPoint(best);
+  });
+  root.append(hit);
+  box.replaceChildren(root);
+}
+
+function renderTrackTable() {
+  if (!$("track-details").open || $("track-table").childElementCount) return;
+  $("track-table").replaceChildren(
+    el("tr", null, ...["Time", "Latitude", "Longitude", "Altitude", "Speed"].map(h => el("th", null, h))),
+    ...trackView.points.map(({point: p}) => el("tr", null,
+      el("td", {class: "nowrap"}, stamp(p[0])), el("td", {class: "mono"}, p[1].toFixed(4)), el("td", {class: "mono"}, p[2].toFixed(4)),
+      el("td", {class: "nowrap"}, p[3] === null ? "–" : `${fmt.format(p[3])} ft`), el("td", {class: "nowrap"}, p[4] === null ? "–" : `${Math.round(p[4])} kt`))));
+}
+$("track-details").addEventListener("toggle", renderTrackTable);
+
+function renderLegend(visit) {
+  const shape = style => el("i", {style});
+  const color = trackColor(visit);
+  $("track-legend").replaceChildren(
+    el("span", null, shape(`background:${color};height:3px;width:16px;border-radius:2px`), "Track"),
+    el("span", null, shape(`background:var(--surface);border:2px solid ${color};border-radius:50%`), "First position"),
+    el("span", null, shape(`background:${color};border-radius:50%`), "Last position"),
+    el("span", null, shape("background:var(--ink);border-radius:1px;transform:rotate(45deg)"), "This receiver"));
+}
+
+let trackRequest = 0;
+async function openTrack(id) {
+  const request = ++trackRequest;
+  const dialog = $("track-dialog");
+  $("track-title").textContent = "Loading track…";
+  $("track-info").replaceChildren();
+  $("track-readout").textContent = "";
+  $("track-profile").replaceChildren();
+  $("track-table").replaceChildren();
+  $("track-details").open = false;
+  trackView.points = [];
+  if (!dialog.open) dialog.showModal();
+  try {
+    const {visit, points} = await api(`track/${id}`);
+    if (request !== trackRequest) return;
+    trackView.visit = visit;
+    $("track-title").textContent = [visit.callsign, visit.reg].filter(Boolean).join(" · ") || visit.hex;
+    const truncated = visit.track_points > points.length ? ` · showing the latest ${fmt.format(points.length)} of ${fmt.format(visit.track_points)} positions` : "";
+    $("track-info").replaceChildren(el("div", {class: "sub"}, `${groupText(visit) !== "–" ? groupText(visit) + " · " : ""}${stamp(visit.first_seen)} · ${duration(visit.last_seen - visit.first_seen)}${truncated}`), ...aircraftDetails(visit));
+    if (!points.length) { $("track-readout").textContent = "No positions were saved for this flight."; return; }
+    $("track-readout").textContent = `${fmt.format(points.length)} positions. Hover over the track or the altitude chart for details.`;
+    renderLegend(visit);
+    renderProfile(points, visit);
+    trackView.points = points.map(point => ({point}));
+    try {
+      await loadOl();
+      if (request === trackRequest) drawMap(points, visit);
+    } catch (err) {
+      $("track-readout").textContent = err.message;
+    }
+  } catch (err) {
+    if (request === trackRequest) { $("track-title").textContent = "Track unavailable"; $("track-readout").textContent = err.message; }
+  }
+}
+$("track-close").addEventListener("click", () => $("track-dialog").close());
+$("track-dialog").addEventListener("click", e => {
+  const box = e.currentTarget.getBoundingClientRect();
+  const outside = e.clientX < box.left || e.clientX > box.right || e.clientY < box.top || e.clientY > box.bottom;
+  if (e.target === e.currentTarget && outside) e.currentTarget.close();
+});
+
+function renderWatches() {
+  const box = $("watches");
+  if (!data.watches.length) { box.replaceChildren(el("div", {class: "empty"}, "Nothing on your list yet.")); return; }
+  const open = new Set([...box.querySelectorAll("details[open]")].map(d => d.dataset.id));
+  box.replaceChildren(...data.watches.map(w => {
+    const remove = el("button", {type: "button", "aria-label": `Remove ${w.value}`}, "Remove");
+    remove.addEventListener("click", () => removeWatch(w.id));
+    const sinceText = w.since !== null ? ` · ${localDate(w.since)}` : "";
+    const summary = w.visits.length ? `${w.visits.length}${w.visits.length >= 100 ? "+" : ""} logged, latest ${stamp(w.visits[0].last_seen)}` : "Not heard yet";
+    const details = w.visits.length ? el("details", {"data-id": String(w.id)}, el("summary", null, "Show log"), el("div", {class: "scroll"}, el("table", null, ...visitTable(w.visits)))) : null;
+    if (details && open.has(String(w.id))) details.open = true;
+    return el("div", {class: "watch"},
+      el("div", {class: "watch-head"},
+        el("span", null, el("span", {class: "watch-title"}, w.value), el("span", {class: "sub"}, ` ${KIND_NAMES[w.kind]}${sinceText}`), w.note ? el("span", {class: "sub"}, ` · ${w.note}`) : null),
+        el("span", null, el("span", {class: "sub"}, summary + " "), remove)),
+      details);
+  }));
+}
+
+function renderEmergencies() {
+  const now = data.emergencies_now || [];
+  const recent = (data.emergencies || []).filter(v => !now.some(n => n.hex === v.hex && n.first_seen === v.first_seen));
+  const name = v => `${v.callsign || v.reg || v.hex} squawking ${v.squawk} (${EMERGENCY_NAMES[v.squawk]})`;
+  $("emergency-card").classList.toggle("active", now.length > 0);
+  $("emergency-title").textContent = now.length ? `Emergency squawk now: ${now.map(name).join(", ")}` : "Emergency squawks in the last 30 days";
+  $("emergency-note").textContent = `${now.length ? "" : "None in range right now. "}7500 means hijacking, 7600 radio failure and 7700 a general emergency. A garbled message can occasionally show a false one. `
+    + (recent.length ? `${recent.length} in the last 30 days${now.length ? ", listed below the current one" : ""}.` : "None in the last 30 days.");
+  const rows = [...now.map(v => ({...v, emergency: v.squawk})), ...recent];
+  $("emergency-table").replaceChildren(...(rows.length ? visitTable(rows) : []));
+}
+
+function render() {
+  const s = data.summary;
+  renderEmergencies();
+  $("t-now").textContent = fmt.format(s.now);
+  $("t-recent").textContent = s.recent === undefined ? "–" : fmt.format(s.recent);
+  $("t-visits").textContent = fmt.format(s.visits_24h);
+  $("t-mil").textContent = fmt.format(s.mil_24h);
+  $("t-gov").textContent = fmt.format(s.gov_24h);
+  $("t-pol").textContent = fmt.format(s.pol_24h);
+  $("t-ladd").textContent = fmt.format(s.ladd_24h);
+  $("t-cargo").textContent = s.cargo_24h === undefined ? "–" : fmt.format(s.cargo_24h);
+  $("updated").textContent = `Updated ${clock(data.generated)}` + (data.tracking_since ? ` · logging since ${stamp(data.tracking_since)}` : "");
+  renderDaily();
+  renderPrivate();
+  renderGoArounds();
+  renderInteresting();
+  renderWatches();
+}
+
+function warn(message) {
+  $("banner").textContent = message ? "⚠ " + message : "";
+  $("banner").classList.toggle("show", !!message);
+}
+
+async function load() {
+  try {
+    const response = await fetch("data/data.json", {cache: "no-store"});
+    if (!response.ok) throw new Error(response.status);
+    data = await response.json();
+    render();
+    const age = Date.now() / 1000 - data.generated;
+    warn(age > 240 ? `The log has not updated for ${Math.round(age / 60)} minutes.` : "");
+  } catch (err) {
+    warn("Can't reach the logger right now. Showing the last data received.");
+  }
+}
+
+async function api(path, options) {
+  const response = await fetch("api/" + path, {cache: "no-store", ...options});
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error || "Something went wrong.");
+  return body;
+}
+
+function setMessage(text, isError) {
+  $("watch-message").textContent = text;
+  $("watch-message").classList.toggle("error", !!isError);
+}
+
+$("watch-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const form = e.target;
+  const body = {kind: form.kind.value, value: form.value.value, note: form.note.value};
+  if (form.date.value) {
+    const start = new Date(form.date.value + "T00:00:00").getTime() / 1000;
+    body.since = Math.floor(start);
+    body.until = Math.floor(start) + 86400;
+  }
+  try {
+    const result = await api("watch", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+    setMessage(`Added ${result.value}.`);
+    form.value.value = ""; form.note.value = ""; form.date.value = "";
+    setTimeout(load, 2500);
+  } catch (err) {
+    setMessage(err.message, true);
+  }
+});
+
+async function removeWatch(id) {
+  try {
+    await api(`watch/${id}`, {method: "DELETE"});
+    setMessage("Removed. Its flights go back to the normal 30-day limit.");
+    setTimeout(load, 2500);
+  } catch (err) {
+    setMessage(err.message, true);
+  }
+}
+
+async function search() {
+  const params = new URLSearchParams({q: $("q").value, group: $("group").value, ...periodParams(logPeriod)});
+  try {
+    const result = await api("search?" + params);
+    if (logPeriod) {
+      $("search-note").replaceChildren(`Flights ${logPeriod.label}: ${countText(result.visits, 200)} Shows up to 200. `,
+        clearButton("Clear", () => { logPeriod = null; search(); }));
+    } else {
+      $("search-note").textContent = `${fmt.format(result.visits.length)} result${result.visits.length === 1 ? "" : "s"}, newest first. Shows up to 200.`;
+    }
+    $("results").replaceChildren(...(result.visits.length ? visitTable(result.visits) : [el("tr", null, el("td", {class: "empty"}, "No matching flights."))]));
+  } catch (err) {
+    $("search-note").textContent = err.message;
+  }
+}
+$("search-form").addEventListener("submit", e => { e.preventDefault(); logPeriod = null; search(); });
+
+let resizeTimer;
+addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { if (data) { renderDaily(); renderPrivate(); renderGoArounds(); } }, 150); });
+load();
+search();
+setInterval(load, 30000);
+</script>
+<script src="/status/alerts.js"></script>
+</body>
+</html>

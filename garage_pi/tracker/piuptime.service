@@ -1,0 +1,15 @@
+[Unit]
+Description=Record Pi uptime for the lifetime counter
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I /opt/bletracker/uptime_counter.py
+User=nobody
+StateDirectory=piuptime
+StateDirectoryMode=0755
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+Nice=10
+IOSchedulingClass=idle

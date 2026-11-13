@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="/favicon.ico?v=2"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pi Status</title>
+<style>
+:root {
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --muted: #6f6d68; --grid: #e1e0d9;
+  --border: rgba(11,11,11,0.10); --series: #2a78d6; --good: #0ca30c; --warn: #b26a00; --bad: #c62828;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --muted: #989690; --grid: #2c2c2a;
+    --border: rgba(255,255,255,0.10); --series: #3987e5; --good: #2fbf2f; --warn: #e0a030; --bad: #ef5350;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 18px; }
+h1 { font-size: 22px; margin: 0; font-weight: 600; }
+h2 { font-size: 15px; margin: 0 0 8px; font-weight: 600; }
+a { color: var(--series); }
+.note { color: var(--muted); font-size: 13px; margin: 0 0 10px; }
+header .note { margin: 0; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.tile, .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+.tile b { display: block; font-size: 22px; font-weight: 600; }
+.tile span { color: var(--muted); font-size: 13px; }
+.card { margin-bottom: 14px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; margin-bottom: 14px; }
+.grid .card { margin-bottom: 0; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; color: var(--muted); font-weight: 500; }
+th, td { padding: 6px 10px 6px 0; border-bottom: 1px solid var(--grid); vertical-align: top; }
+.ok { color: var(--good); } .warning { color: var(--warn); } .critical { color: var(--bad); }
+.alert { padding: 8px 10px; border-radius: 6px; margin-bottom: 6px; color: #fff; }
+.alert.critical { background: #c62828; } .alert.warning { background: #9a5b00; }
+.chart { position: relative; height: 140px; }
+.chart svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.chart .tip { position: absolute; top: 0; padding: 3px 7px; font-size: 12px; background: var(--ink); color: var(--page); border-radius: 4px; pointer-events: none; white-space: nowrap; }
+.axis { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; margin-top: 4px; }
+button { font: inherit; padding: 7px 14px; border-radius: 6px; border: 1px solid var(--border); background: var(--page); color: var(--ink); cursor: pointer; }
+button.danger { border-color: var(--bad); color: var(--bad); }
+button.go { background: var(--bad); border-color: var(--bad); color: #fff; }
+button:disabled { opacity: .45; cursor: default; }
+input { font: inherit; padding: 7px 9px; border-radius: 6px; border: 1px solid var(--border); background: var(--page); color: var(--ink); width: 12em; max-width: 100%; }
+.power { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.confirm { margin-top: 12px; padding: 12px; border: 1px solid var(--bad); border-radius: 8px; }
+.confirm p { margin: 0 0 10px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.hide { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1 id="title">Pi Status</h1>
+    <span class="note" id="nav"><span id="updated">Loading…</span></span>
+  </header>
+
+  <section class="card" id="alerts-card">
+    <h2>Alerts</h2>
+    <div id="alerts"></div>
+  </section>
+
+  <section class="tiles" aria-label="Summary">
+    <div class="tile"><b id="t-temp">–</b><span>CPU temperature</span></div>
+    <div class="tile"><b id="t-uptime">–</b><span>Up for</span></div>
+    <div class="tile"><b id="t-load">–</b><span>Load (1, 5, 15 min)</span></div>
+    <div class="tile"><b id="t-mem">–</b><span>Memory free</span></div>
+    <div class="tile"><b id="t-wifi">–</b><span>Network Wi-Fi signal</span></div>
+    <div class="tile"><b id="t-power">–</b><span>Power</span></div>
+  </section>
+
+  <section class="card">
+    <h2>CPU temperature, last 24 hours</h2>
+    <p class="note">Highest reading in each 5 minutes. It slows itself down at 80°C.</p>
+    <div class="chart" id="chart"></div>
+    <div class="axis"><span id="axis-start"></span><span>Now</span></div>
+  </section>
+
+  <section class="grid">
+    <div class="card"><h2>Radios</h2><table><tbody id="radios"></tbody></table></div>
+    <div class="card"><h2>Services</h2><table><tbody id="services"></tbody></table></div>
+    <div class="card"><h2>Data freshness</h2><table><tbody id="fresh"></tbody></table></div>
+    <div class="card"><h2>Storage and clock</h2><table><tbody id="disks"></tbody></table></div>
+    <div class="card"><h2>Last 24 hours</h2><table><tbody id="counts"></tbody></table></div>
+    <div class="card" id="peer-card"><h2 id="peer-title">Other Pi</h2><table><tbody id="peer"></tbody></table></div>
+  </section>
+
+  <section class="card">
+    <h2>Recent alert history</h2>
+    <p class="note">Kept 7 days. An alert only appears once its problem has lasted long enough to matter, usually 2 to 3 minutes.</p>
+    <table><thead><tr><th>When</th><th></th><th>Alert</th></tr></thead><tbody id="events"></tbody></table>
+  </section>
+
+  <section class="card">
+    <h2>Power</h2>
+    <p class="note" id="power-note"></p>
+    <div class="power">
+      <button id="reboot">Reboot…</button>
+      <button id="shutdown" class="danger">Shut down…</button>
+    </div>
+    <div class="confirm hide" id="confirm-reboot">
+      <p>Reboot <b class="pi-name"></b>? It should be back in about 2 minutes. Anything recording now will stop.</p>
+      <div class="row"><button class="go" id="reboot-go">Reboot now</button><button id="reboot-cancel">Cancel</button></div>
+    </div>
+    <div class="confirm hide" id="confirm-shutdown">
+      <p><b>Shutting down <span class="pi-name"></span> turns it off until someone unplugs it and plugs it back in.</b> It can't be started from this page.</p>
+      <p>Type <b class="pi-name"></b> to confirm:</p>
+      <div class="row"><input id="shutdown-name" autocomplete="off" spellcheck="false" aria-label="Pi name"><button class="go" id="shutdown-go" disabled>Shut down</button><button id="shutdown-cancel">Cancel</button></div>
+    </div>
+    <div class="confirm hide" id="countdown">
+      <p id="countdown-text"></p>
+      <div class="row"><button id="countdown-cancel">Cancel</button></div>
+    </div>
+    <p class="note" id="power-result"></p>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const COUNTDOWN_SECONDS = {reboot: 5, poweroff: 10};
+let data = null, countdown = null;
+
+function el(tag, cls, text) {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (text !== undefined && text !== null) node.textContent = text;
+  return node;
+}
+function row(cells, cls) {
+  const tr = el("tr");
+  cells.forEach((c, i) => tr.append(el("td", i === cells.length - 1 && cls ? cls : null, c)));
+  return tr;
+}
+function duration(s) {
+  if (s === null || s === undefined) return "–";
+  if (s < 90) return s + " s";
+  if (s < 5400) return Math.round(s / 60) + " min";
+  if (s < 172800) return (s / 3600).toFixed(1) + " h";
+  return Math.round(s / 86400) + " days";
+}
+function clock(t) { return t ? new Date(t * 1000).toLocaleString([], {weekday: "short", hour: "numeric", minute: "2-digit"}) : "–"; }
+function fill(id, rows) { const body = $(id); body.replaceChildren(...rows); if (!rows.length) body.append(row(["Nothing to show"])); }
+
+function drawChart(points) {
+  const box = $("chart");
+  box.replaceChildren();
+  if (points.length < 2) { box.append(el("p", "note", "Collecting readings…")); return; }
+  const ns = "http://www.w3.org/2000/svg", w = 1000, h = 140, pad = 18;
+  const t0 = points[0][0], t1 = points[points.length - 1][0];
+  const lo = Math.min(30, ...points.map(p => p[1])), hi = Math.max(85, ...points.map(p => p[1]));
+  const x = t => (t - t0) / Math.max(1, t1 - t0) * w, y = c => h - pad - (c - lo) / (hi - lo) * (h - 2 * pad);
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  svg.setAttribute("preserveAspectRatio", "none");
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", `CPU temperature from ${clock(t0)} to now, latest ${points[points.length - 1][1]}°C`);
+  [40, 60, 80].forEach(c => {
+    const line = document.createElementNS(ns, "line");
+    Object.entries({x1: 0, x2: w, y1: y(c), y2: y(c), stroke: c === 80 ? "var(--bad)" : "var(--grid)", "stroke-width": 1, "vector-effect": "non-scaling-stroke", "stroke-dasharray": c === 80 ? "4 4" : ""}).forEach(([k, v]) => line.setAttribute(k, v));
+    svg.append(line);
+    const label = document.createElementNS(ns, "text");
+    Object.entries({x: 4, y: y(c) - 3, fill: "var(--muted)", "font-size": 11}).forEach(([k, v]) => label.setAttribute(k, v));
+    label.textContent = c + "°C";
+    svg.append(label);
+  });
+  const path = document.createElementNS(ns, "polyline");
+  path.setAttribute("points", points.map(p => `${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`).join(" "));
+  Object.entries({fill: "none", stroke: "var(--series)", "stroke-width": 2, "vector-effect": "non-scaling-stroke", "stroke-linejoin": "round"}).forEach(([k, v]) => path.setAttribute(k, v));
+  svg.append(path);
+  const cross = document.createElementNS(ns, "line");
+  Object.entries({y1: 0, y2: h, stroke: "var(--muted)", "stroke-width": 1, "vector-effect": "non-scaling-stroke", visibility: "hidden"}).forEach(([k, v]) => cross.setAttribute(k, v));
+  svg.append(cross);
+  const tip = el("div", "tip hide");
+  box.append(svg, tip);
+  box.onmousemove = e => {
+    const r = box.getBoundingClientRect(), t = t0 + (e.clientX - r.left) / r.width * (t1 - t0);
+    const p = points.reduce((a, b) => Math.abs(b[0] - t) < Math.abs(a[0] - t) ? b : a);
+    cross.setAttribute("x1", x(p[0])); cross.setAttribute("x2", x(p[0])); cross.setAttribute("visibility", "visible");
+    tip.textContent = `${clock(p[0])}: ${p[1]}°C`;
+    tip.classList.remove("hide");
+    tip.style.left = Math.min(r.width - tip.offsetWidth, Math.max(0, x(p[0]) / w * r.width - tip.offsetWidth / 2)) + "px";
+  };
+  box.onmouseleave = () => { cross.setAttribute("visibility", "hidden"); tip.classList.add("hide"); };
+  $("axis-start").textContent = clock(t0);
+}
+
+function render() {
+  const s = data.system;
+  document.title = `${data.name} status`;
+  $("title").textContent = `${data.name} status`;
+  document.querySelectorAll(".pi-name").forEach(n => n.textContent = data.name);
+  const nav = $("nav");
+  nav.replaceChildren();
+  data.pages.forEach(([name, url]) => { const a = el("a", null, name); a.href = url; nav.append(a, " · "); });
+  if (data.peer) { const a = el("a", null, `${data.peer.name} status`); a.href = data.peer.page; nav.append(a, " · "); }
+  nav.append(el("span", null, `Checked ${new Date(data.generated * 1000).toLocaleTimeString([], {hour: "numeric", minute: "2-digit"})}`));
+
+  const alerts = $("alerts");
+  alerts.replaceChildren();
+  data.alerts.forEach(a => alerts.append(el("div", "alert " + a.level, `${a.text} (since ${clock(a.since)})`)));
+  if (!data.alerts.length) alerts.append(el("p", "note ok", "No alerts on this Pi."));
+
+  $("t-temp").textContent = s.temp_c === null ? "–" : s.temp_c.toFixed(0) + "°C";
+  $("t-uptime").textContent = duration(s.uptime_s);
+  $("t-load").textContent = s.load.join(", ");
+  $("t-mem").textContent = s.mem_free_pct === null ? "–" : s.mem_free_pct + "%";
+  $("t-wifi").textContent = s.wifi_dbm === null ? "–" : s.wifi_dbm + " dBm";
+  $("t-power").textContent = s.power_now.length ? s.power_now.join(", ") : "OK";
+  $("t-power").className = s.power_now.length ? "critical" : "ok";
+  drawChart(data.temps);
+
+  fill("radios", data.radios.map(r => row([r.name, r.detail], r.ok ? "ok" : "warning")));
+  fill("services", data.services.map(v => row([v.name, v.state], v.state === "active" ? "ok" : "critical")));
+  fill("fresh", data.fresh.map(f => row([f.name, f.age_s === null ? "missing" : duration(f.age_s) + " old"])));
+  const disks = data.disks.map(d => row([d.path, `${d.free_gb} GB free of ${d.total_gb} GB (${d.free_pct}%)`]));
+  disks.push(row(["Clock", s.clock_synced ? "Synchronized" : "Not synchronized"], s.clock_synced ? "ok" : "warning"));
+  disks.push(row(["Since boot", s.power_since_boot.length ? "Had " + s.power_since_boot.join(", ") : "No power or heat problems"], s.power_since_boot.length ? "warning" : "ok"));
+  fill("disks", disks);
+  fill("counts", data.counts.map(c => row([c.name, c.count === null ? "–" : `${c.count}${c.last ? " · last " + clock(c.last) : ""}${c.detail ? " · " + c.detail : ""}`])));
+
+  const peer = data.peer;
+  $("peer-card").classList.toggle("hide", !peer);
+  if (peer) {
+    $("peer-title").textContent = peer.name;
+    const rows = [row(["Reachable", peer.reachable ? "Yes" : `No, last seen ${clock(peer.last_ok)}`], peer.reachable ? "ok" : "warning")];
+    if (peer.reachable) {
+      rows.push(row(["Alerts", peer.alerts.length ? peer.alerts.map(a => a.text).join(" · ") : "None"], peer.alerts.length ? "warning" : "ok"));
+      rows.push(row(["CPU temperature", peer.temp_c === null ? "–" : peer.temp_c.toFixed(0) + "°C"]), row(["Up for", duration(peer.uptime_s)]));
+    }
+    const link = row(["Status page", ""]);
+    const a = el("a", null, peer.page); a.href = peer.page; link.lastChild.append(a);
+    rows.push(link);
+    fill("peer", rows);
+  }
+  fill("events", data.events.map(e => { const tr = row([clock(e.t), e.kind === "start" ? "Started" : "Cleared", e.text]); tr.children[1].className = e.kind === "start" ? e.level : "ok"; return tr; }));
+  $("power-note").textContent = `These act on ${data.name} only. Use the other Pi's status page for that one.`;
+}
+
+async function load() {
+  try {
+    const response = await fetch("data/status.json", {cache: "no-store"});
+    if (!response.ok) throw new Error(response.status);
+    data = await response.json();
+    render();
+  } catch (error) {
+    $("updated").textContent = "Waiting for the first check…";
+  }
+}
+
+function show(id) { ["confirm-reboot", "confirm-shutdown", "countdown"].forEach(x => $(x).classList.toggle("hide", x !== id)); }
+function cancelAll() {
+  if (countdown) { clearInterval(countdown); countdown = null; }
+  show(null);
+  $("shutdown-name").value = ""; $("shutdown-go").disabled = true;
+  $("reboot").disabled = $("shutdown").disabled = false;
+}
+function startCountdown(action) {
+  const word = action === "reboot" ? "Rebooting" : "Shutting down";
+  let left = COUNTDOWN_SECONDS[action];
+  show("countdown");
+  $("reboot").disabled = $("shutdown").disabled = true;
+  const tick = () => { $("countdown-text").textContent = `${word} ${data.name} in ${left} s. Cancel now if this was a mistake.`; };
+  tick();
+  countdown = setInterval(async () => {
+    left -= 1;
+    if (left > 0) return tick();
+    clearInterval(countdown); countdown = null;
+    $("countdown-text").textContent = `Sending to ${data.name}…`;
+    $("countdown-cancel").disabled = true;
+    try {
+      const response = await fetch("api/power", {method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({action, confirm: action === "poweroff" ? $("shutdown-name").value.trim() : "reboot"})});
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || response.status);
+      show(null);
+      $("power-result").textContent = action === "reboot" ? `${data.name} is rebooting. This page will come back when it does.` : `${data.name} is shutting down. Unplug and replug its power to start it again.`;
+    } catch (error) {
+      show(null);
+      $("power-result").textContent = `Not sent: ${error.message}`;
+      $("reboot").disabled = $("shutdown").disabled = false;
+    }
+    $("countdown-cancel").disabled = false;
+  }, 1000);
+}
+$("reboot").addEventListener("click", () => { $("power-result").textContent = ""; show("confirm-reboot"); });
+$("shutdown").addEventListener("click", () => { $("power-result").textContent = ""; show("confirm-shutdown"); $("shutdown-name").focus(); });
+$("reboot-cancel").addEventListener("click", cancelAll);
+$("shutdown-cancel").addEventListener("click", cancelAll);
+$("countdown-cancel").addEventListener("click", cancelAll);
+$("shutdown-name").addEventListener("input", e => { $("shutdown-go").disabled = !data || e.target.value.trim() !== data.name; });
+$("reboot-go").addEventListener("click", () => startCountdown("reboot"));
+$("shutdown-go").addEventListener("click", () => { if (data && $("shutdown-name").value.trim() === data.name) startCountdown("poweroff"); });
+load();
+setInterval(load, 30000);
+</script>
+<script src="/status/alerts.js"></script>
+</body>
+</html>

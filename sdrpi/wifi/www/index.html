@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="/favicon.ico?v=2"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wi-Fi Tracker</title>
+<style>
+:root {
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --muted: #6f6d68; --grid: #e1e0d9;
+  --border: rgba(11,11,11,0.10); --series: #2a78d6; --good: #0ca30c;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --muted: #989690; --grid: #2c2c2a;
+    --border: rgba(255,255,255,0.10); --series: #3987e5; --good: #2fbf2f;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 18px; }
+h1 { font-size: 22px; margin: 0; font-weight: 600; }
+h2 { font-size: 15px; margin: 0 0 2px; font-weight: 600; }
+a { color: var(--series); }
+.note { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+header .note { margin: 0; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.tile, .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+.tile b { display: block; font-size: 24px; font-weight: 600; }
+.tile span { color: var(--muted); font-size: 13px; }
+.card { margin-bottom: 14px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+.grid .card { margin-bottom: 0; }
+.grid { margin-bottom: 14px; }
+.bar-row { display: grid; grid-template-columns: minmax(0, 46%) minmax(0, 1fr) 34px; gap: 8px; align-items: center; padding: 3px 0; }
+.bar-row .label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bar-row .value { text-align: right; font-variant-numeric: tabular-nums; }
+.track { height: 12px; }
+.fill { display: block; height: 100%; min-width: 2px; background: var(--series); border-radius: 0 4px 4px 0; }
+.hours { display: flex; align-items: flex-end; gap: 2px; height: 110px; border-bottom: 1px solid var(--grid); margin-top: 8px; }
+.hour { flex: 1; height: 100%; display: flex; align-items: flex-end; }
+.hour i { display: block; width: 100%; min-height: 1px; background: var(--series); border-radius: 4px 4px 0 0; }
+.axis { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; margin-top: 4px; }
+.filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+input, select { background: var(--page); color: var(--ink); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font: inherit; }
+input { flex: 1; min-width: 160px; }
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; color: var(--muted); font-weight: 500; }
+th, td { padding: 6px 10px 6px 0; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+td.wrap { white-space: normal; min-width: 160px; }
+.here { color: var(--good); }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Wi-Fi Tracker</h1>
+    <span class="note"><a href="/">Scanner</a> · <a href="/bluetooth/">Bluetooth</a> · <a href="/flights/">Flights</a> · <a href="/weather/">Weather</a> · <a href="/status/">Status</a> · <a href="http://piaware.local/aircraft/">garage_pi</a> · <span id="updated">Loading…</span></span>
+  </header>
+
+  <section class="tiles" aria-label="Summary">
+    <div class="tile"><b id="t-here">–</b><span>Here now</span></div>
+    <div class="tile"><b id="t-aps">–</b><span>Networks here now</span></div>
+    <div class="tile"><b id="t-clients">–</b><span>Devices here now</span></div>
+    <div class="tile"><b id="t-random">–</b><span>Private addresses, last 5 min</span></div>
+    <div class="tile"><b id="t-known">–</b><span>Known overall</span></div>
+    <div class="tile"><b id="t-new">–</b><span>New in 24 hours</span></div>
+  </section>
+
+  <section class="card">
+    <h2>Devices heard per hour</h2>
+    <p class="note">Last 24 hours, excluding private addresses. 2.4 GHz only: this dongle can't hear 5 or 6 GHz.</p>
+    <div class="hours" id="hours"></div>
+    <div class="axis"><span id="axis-start"></span><span>Now</span></div>
+  </section>
+
+  <section class="grid">
+    <div class="card"><h2>By Wi-Fi type</h2><p class="note">Newest standard each device advertised, last 24 hours</p><div id="c-wifi"></div></div>
+    <div class="card"><h2>By device type</h2><p class="note">Best guess from network name or manufacturer, last 24 hours</p><div id="c-device"></div></div>
+    <div class="card"><h2>By likely distance</h2><p class="note">Estimated from signal strength. Walls can shift it a lot.</p><div id="c-distance"></div></div>
+    <div class="card"><h2>Network security</h2><p class="note">Networks heard in the last 24 hours</p><div id="c-security"></div></div>
+  </section>
+
+  <section class="card">
+    <h2>Devices</h2>
+    <p class="note">Most recently heard first.</p>
+    <div class="filters">
+      <input id="q" placeholder="Search name, maker or address" aria-label="Search devices">
+      <select id="role" aria-label="Role"><option value="">Networks and devices</option><option value="ap">Networks</option><option value="client">Devices</option></select>
+      <select id="cat" aria-label="Device type"><option value="">All device types</option></select>
+      <select id="band" aria-label="Distance"><option value="">Any distance</option></select>
+      <select id="status" aria-label="Status"><option value="">Any time</option><option value="here">Here now</option></select>
+    </div>
+    <div class="scroll"><table>
+      <thead><tr><th>Status</th><th>Device</th><th>Network</th><th>Wi-Fi type</th><th>Likely distance</th><th>Signal</th><th>Channel</th><th>Security</th><th>Last heard</th><th>Address</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table></div>
+  </section>
+
+  <section class="card">
+    <h2>Private (randomized) addresses</h2>
+    <p class="note">Phones change these addresses often, so they are only counted and never stored. One phone can count several times.</p>
+    <div class="scroll"><table>
+      <thead><tr><th>Wi-Fi type</th><th>Likely distance</th><th>Typical at once</th><th>Peak at once</th></tr></thead>
+      <tbody id="random"></tbody>
+    </table></div>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let data = null;
+
+function el(tag, cls, text) {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (text !== undefined && text !== null) node.textContent = text;
+  return node;
+}
+
+function drawBars(target, counts, order) {
+  const entries = order ? order.filter(k => counts[k]).map(k => [k, counts[k]])
+                        : Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  const box = $(target);
+  box.replaceChildren();
+  if (!entries.length) { box.append(el("p", "note", "Nothing yet.")); return; }
+  const max = Math.max(...entries.map(e => e[1]));
+  entries.forEach(([name, value]) => {
+    const row = el("div", "bar-row");
+    row.title = `${name}: ${value}`;
+    row.append(el("span", "label", name));
+    const track = el("span", "track");
+    const fill = el("i", "fill");
+    fill.style.width = (value / max * 100) + "%";
+    track.append(fill);
+    row.append(track, el("span", "value", value));
+    box.append(row);
+  });
+}
+
+function drawHours(hours) {
+  const box = $("hours");
+  box.replaceChildren();
+  const max = Math.max(1, ...hours.map(h => h.devices));
+  hours.forEach(h => {
+    const col = el("div", "hour");
+    const label = new Date(h.t * 1000).toLocaleTimeString([], {hour: "numeric"});
+    col.title = `${label}: ${h.devices} devices`;
+    const bar = el("i");
+    bar.style.height = (h.devices / max * 100) + "%";
+    col.append(bar);
+    box.append(col);
+  });
+  $("axis-start").textContent = new Date(hours[0].t * 1000).toLocaleTimeString([], {hour: "numeric"});
+}
+
+function ago(t) {
+  const s = Math.max(0, data.generated - t);
+  if (s < 90) return "just now";
+  if (s < 5400) return Math.round(s / 60) + " min ago";
+  if (s < 129600) return Math.round(s / 3600) + " h ago";
+  return Math.round(s / 86400) + " d ago";
+}
+
+function fillSelect(id, values) {
+  const select = $(id), current = select.value;
+  while (select.options.length > 1) select.remove(1);
+  values.forEach(v => { const o = el("option", null, v); o.value = v; select.append(o); });
+  select.value = values.includes(current) ? current : "";
+}
+
+function drawTable() {
+  const q = $("q").value.trim().toLowerCase(), role = $("role").value, cat = $("cat").value, band = $("band").value, status = $("status").value;
+  const body = $("rows");
+  body.replaceChildren();
+  const list = data.devices.filter(d => (!role || d.role === role) && (!cat || d.category === cat) && (!band || d.band === band)
+    && (!status || d.here) && (!q || [d.label, d.ssid, d.vendor, d.mac, d.category].some(v => v && v.toLowerCase().includes(q))));
+  list.slice(0, 300).forEach(d => {
+    const tr = el("tr");
+    tr.title = `Why: ${d.evidence}. Confidence: ${d.confidence}.`;
+    tr.append(el("td", d.here ? "here" : "", d.here ? "Here" : "Gone"), el("td", "wrap", d.label),
+      el("td", null, d.role === "ap" ? (d.ssid || "(hidden)") : "–"), el("td", null, d.wifi_type),
+      el("td", null, d.metres ? `about ${d.metres} m` : "–"), el("td", null, d.rssi !== null ? `${d.rssi} dBm` : "–"),
+      el("td", null, d.channel || "–"), el("td", null, d.security || "–"), el("td", null, ago(d.last_seen)), el("td", "mono", d.mac));
+    body.append(tr);
+  });
+  if (!list.length) { const tr = el("tr"), td = el("td", "note", "No devices match."); td.colSpan = 10; tr.append(td); body.append(tr); }
+}
+
+function render() {
+  const s = data.summary;
+  $("t-here").textContent = s.here; $("t-aps").textContent = s.access_points; $("t-clients").textContent = s.clients;
+  $("t-random").textContent = s.random_now; $("t-known").textContent = s.known; $("t-new").textContent = s.new_24h;
+  $("updated").textContent = `Updated ${new Date(data.generated * 1000).toLocaleTimeString([], {hour: "numeric", minute: "2-digit"})}`;
+  drawHours(data.hourly);
+  drawBars("c-wifi", data.tallies.wifi_type, data.order);
+  drawBars("c-device", data.tallies.device_type);
+  drawBars("c-distance", data.tallies.distance, data.bands);
+  drawBars("c-security", data.tallies.security);
+  fillSelect("cat", [...new Set(data.devices.map(d => d.category))].sort());
+  fillSelect("band", data.bands);
+  drawTable();
+  const body = $("random");
+  body.replaceChildren();
+  data.random.forEach(r => { const tr = el("tr"); tr.append(el("td", null, r.wifi_type), el("td", null, r.band), el("td", null, r.typical), el("td", null, r.peak)); body.append(tr); });
+  if (!data.random.length) { const tr = el("tr"), td = el("td", "note", "Nothing yet."); td.colSpan = 4; tr.append(td); body.append(tr); }
+}
+
+async function load() {
+  try {
+    const response = await fetch("data/data.json", {cache: "no-store"});
+    if (!response.ok) throw new Error(response.status);
+    data = await response.json();
+    render();
+  } catch (error) {
+    $("updated").textContent = "Waiting for first data…";
+  }
+}
+["q", "role", "cat", "band", "status"].forEach(id => $(id).addEventListener("input", () => data && drawTable()));
+load();
+setInterval(load, 60000);
+</script>
+<script src="/power.js"></script>
+<script src="/status/alerts.js"></script>
+</body>
+</html>

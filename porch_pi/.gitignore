@@ -1,0 +1,7 @@
+.DS_Store
+__pycache__/
+*.pyc
+*.db
+
+# Personal details, kept off GitHub
+CLAUDE.local.md

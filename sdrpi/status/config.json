@@ -1,0 +1,22 @@
+{
+  "name": "sdrpi",
+  "output": "/run/pistatus/status.json",
+  "history": "/mnt/data/pistatus/history.json",
+  "pages": [["Scanner", "/"], ["Bluetooth", "/bluetooth/"], ["Wi-Fi", "/wifi/"], ["Flights", "/flights/"], ["Weather", "/weather/"]],
+  "services": ["sdrpi-scanner", "bletracker", "wifitracker", "flightstore", "log2ram", "pistatus-power.path"],
+  "disks": ["/", "/mnt/data"],
+  "fresh": [
+    {"name": "Bluetooth tracker data", "path": "/run/bletracker/data.json", "max_age": 300},
+    {"name": "Wi-Fi tracker data", "path": "/run/wifitracker/data.json", "max_age": 300},
+    {"name": "Flight store sync", "path": "/run/flightstore/status.json", "max_age": 1800}
+  ],
+  "rx_watch": [{"name": "Wi-Fi dongle", "path": "/sys/class/net/wlan1/statistics/rx_packets", "silent": 300}],
+  "scanner_health": "http://127.0.0.1:8080/api/health",
+  "log_counts": [
+    {"name": "HackRF resets", "path": "/mnt/data/logs/scanner.log", "match": "hackrf reset, exit 0"},
+    {"name": "HackRF resets that failed", "path": "/mnt/data/logs/scanner.log", "match": "hackrf reset, exit 1"},
+    {"name": "Go-around recordings", "path": "/mnt/data/logs/scanner.log", "match": "go-around recording", "detail": true}
+  ],
+  "journal_counts": [{"name": "Wi-Fi dongle restarts", "unit": "wifitracker", "match": "Deactivated successfully"}],
+  "peer": {"name": "garage_pi", "data": "http://piaware.local/status/data/status.json", "page": "http://piaware.local/status/"}
+}

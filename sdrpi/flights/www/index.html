@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="/favicon.ico?v=2"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flights</title>
+<style>
+:root {
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #3d3c39; --muted: #6f6d68; --grid: #e1e0d9; --axis: #c9c8c1;
+  --border: rgba(11,11,11,0.10); --series: #2a78d6; --series-2: #eb6834; --wash: rgba(42,120,214,0.10);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c8c6c1; --muted: #989690; --grid: #2c2c2a; --axis: #45443f;
+    --border: rgba(255,255,255,0.10); --series: #3987e5; --series-2: #d95926; --wash: rgba(57,135,229,0.16);
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1120px; margin: 0 auto; padding: 24px 16px 48px; display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; }
+h1 { font-size: 22px; margin: 0; font-weight: 600; }
+h2 { font-size: 15px; margin: 0 0 4px; font-weight: 600; }
+a { color: var(--series); }
+.note { color: var(--muted); font-size: 12.5px; margin: 0 0 10px; }
+header .note { margin: 0; }
+.bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; }
+.tabs a { padding: 6px 12px; border-radius: 6px; text-decoration: none; color: var(--ink-2); border: 1px solid transparent; }
+.tabs a.on { border-color: var(--border); background: var(--surface); color: var(--ink); font-weight: 600; }
+.rankbar { display: flex; align-items: center; gap: 8px; min-width: 160px; font-variant-numeric: tabular-nums; }
+.rankbar i { display: block; height: 10px; border-radius: 0 4px 4px 0; background: var(--series); }
+.rankbar b { font-weight: 500; }
+.searchrow { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin: 4px 0 8px; }
+.searchrow input[type=search] { flex: 1 1 320px; min-width: 0; }
+.searchrow label { display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; }
+.searchrow input[type=checkbox] { min-height: 0; padding: 0; }
+.vip { display: inline-block; padding: 0 6px; border-radius: 4px; font-size: 11px; font-weight: 600; letter-spacing: .04em; background: var(--series-2); color: var(--surface); }
+select, input { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--axis); border-radius: 6px; padding: 6px 8px; min-height: 34px; }
+input { flex: 1 1 180px; min-width: 0; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.tile, .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px; min-width: 0; }
+.tile b { display: block; font-size: 26px; font-weight: 600; line-height: 1.2; }
+.tile span { color: var(--ink-2); font-size: 13px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 13px; }
+th { text-align: left; font-weight: 500; color: var(--ink-2); padding: 6px 10px 6px 0; border-bottom: 1px solid var(--axis); white-space: nowrap; }
+td { padding: 6px 10px 6px 0; border-bottom: 1px solid var(--grid); vertical-align: top; }
+td.num, th.num { text-align: right; }
+.mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px; white-space: nowrap; }
+.sub { color: var(--muted); font-size: 12px; }
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; height: 160px; }
+.legend { display: flex; gap: 14px; font-size: 12.5px; color: var(--ink-2); margin-bottom: 6px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+.tip { position: absolute; top: 0; padding: 4px 8px; font-size: 12px; background: var(--ink); color: var(--page); border-radius: 4px; pointer-events: none; white-space: nowrap; }
+.empty { color: var(--muted); padding: 8px 0; }
+.hide { display: none; }
+#results { margin-top: 8px; }
+.map { height: min(52vh, 440px); margin-top: 6px; border-radius: 6px; background: var(--grid); overflow: hidden; }
+.map .ol-attribution { font-size: 11px; }
+tr.picked td { background: var(--wash); }
+a.tile { display: block; color: inherit; text-decoration: none; }
+a.tile:hover { border-color: var(--series); }
+a.tile:focus-visible { outline: 2px solid var(--series); outline-offset: 2px; }
+.tile.has-new { border: 2px solid var(--series-2); }
+.badge { display: inline-block; margin-left: 6px; padding: 0 7px; border-radius: 9px; background: var(--series-2); color: #fff; font-size: 11.5px; font-weight: 600; line-height: 18px; vertical-align: 1px; }
+tr.new td { background: rgba(235,104,52,0.12); }
+dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 4px 0 0; }
+dl.facts dt { color: var(--muted); }
+dl.facts dd { margin: 0; }
+.view-track { font: inherit; color: var(--series); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; }
+@media (prefers-color-scheme: dark) { .osm-tiles { filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9); } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Flights</h1>
+    <span class="note"><a href="/">Scanner</a> · <a href="/bluetooth/">Bluetooth</a> · <a href="/wifi/">Wi-Fi</a> · <a href="/weather/">Weather</a> · <a href="/status/">Status</a> · <a href="http://piaware.local/aircraft/display/">Display</a> · <a href="http://piaware.local/aircraft/">garage_pi</a> · <span id="updated">Loading…</span></span>
+  </header>
+
+  <nav class="tabs" id="tabs" aria-label="Sections">
+    <a href="#tab=overview" data-tab="overview">Overview</a>
+    <a href="#tab=planes" data-tab="planes">Planes</a>
+    <a href="#tab=airlines" data-tab="airlines">Airlines</a>
+    <a href="#tab=airports" data-tab="airports">Airports</a>
+    <a href="#tab=types" data-tab="types">Aircraft types</a>
+    <a href="#tab=cargo" data-tab="cargo">Cargo</a>
+    <a href="#tab=destinations" data-tab="destinations">Destinations</a>
+    <a href="#tab=overhead" data-tab="overhead">Over the house</a>
+    <a href="#tab=notable" data-tab="notable">Go-arounds and emergencies</a>
+    <a href="#tab=diversions" data-tab="diversions">Diversions</a>
+    <a href="#tab=interesting" data-tab="interesting">Interesting</a>
+  </nav>
+
+  <div class="bar">
+    <select id="days" aria-label="Period">
+      <option value="1">Last 24 hours</option><option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option>
+      <option value="90">Last 90 days</option><option value="365">Last year</option><option value="0">All time</option>
+    </select>
+    <select id="radius" aria-label="Over the house means within">
+      <option value="0.1">Overhead: within 0.1 km</option><option value="0.5">Overhead: within 0.5 km</option><option value="1" selected>Overhead: within 1 km</option>
+    </select>
+    <input id="q" type="search" placeholder="Find a tail number, callsign, airline or airport" aria-label="Search">
+  </div>
+  <div class="card hide" id="results"></div>
+
+  <div id="view"></div>
+
+  <p class="note">Takeoffs and landings are worked out from each track: it starts or ends below 1,500 ft within 8 km of an airport with scheduled service, then climbs or after descending at least 1,000 ft. Airports far away are only counted when the receiver hears aircraft low there, and small airfields without scheduled service aren't counted. "Overhead" uses the closest point of each flight path to the house.</p>
+</main>
+<script src="/status/alerts.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const fmt = new Intl.NumberFormat();
+const SVG = "http://www.w3.org/2000/svg";
+const FLAGS = {grp: {mil: "Military", gov: "Government", pol: "Police"}};
+const interestingSearch = {q: "", vip: false};  // kept while switching tabs
+const TOP_PLANES = 20;
+const EMERGENCY_NAMES = {7500: "hijacking", 7600: "radio failure", 7700: "emergency"};
+
+// Go-arounds and emergencies newer than the highest id this browser has listed are marked as new.
+// Stored per browser only; on a first visit everything already logged counts as seen.
+const SEEN_KEY = "flights-notable-seen";
+function seenId() { try { const v = localStorage.getItem(SEEN_KEY); return v === null ? null : Number(v); } catch (e) { return 0; } }
+function markSeen(ids) { const top = Math.max(0, ...ids); try { if (top > (seenId() || 0)) localStorage.setItem(SEEN_KEY, String(top)); } catch (e) {} }
+function isNew(id) { const seen = seenId(); return seen !== null && id > seen; }
+let listSeen;  // what had been seen when the list was first opened, so its highlights last while the page stays open
+function duration(s) {
+  if (s === null || s === undefined) return "–";
+  const m = Math.floor(s / 60), sec = Math.round(s % 60);
+  return m ? `${m} min${sec ? ` ${sec} s` : ""}` : `${sec} s`;
+}
+// What each go-around cost: time from going around until back over the same spot at the same height
+function goAroundLines(list) {
+  const how = {"same point": "until it was back over the same spot at the same height",
+    "from the landing": "from the landing time, less a normal approach from that spot",
+    "at least": "at least; the track ends before it came back", "landed elsewhere": "it then landed at another airport"};
+  return list.map((g, i) => `${list.length > 1 ? `${i + 1}. ` : ""}${g.airport_name} at ${hm(g.t)}, ${n(g.agl)} ft above the airport: ` +
+    (g.added_s === null ? how[g.how] : `${g.how === "at least" ? "at least " : "about "}${duration(g.added_s)} added (${how[g.how]})`));
+}
+function diversionText(d) {
+  if (!d) return "";
+  if (d.kind === "returned") return `Turned back: landed at ${d.airport_name}, where it took off, after going ${d.detail} km out`;
+  if (d.kind === "here") return `Diverted to ${d.airport_name}${d.usual_name ? `; listed as going to ${d.usual_name}` : ""}. On ${d.detail} other days this flight number only flew over`;
+  return `Diverted away from ${d.usual_name}, where this flight number usually lands: came down to ${n(d.detail)} ft, then left${d.airport_name ? ` and landed at ${d.airport_name}` : ""}`;
+}
+function notableText(r) {
+  return [r.go_around && `Go-around at ${r.airport_name || r.go_around}`, r.emergency && `Squawked ${r.emergency} (${EMERGENCY_NAMES[r.emergency] || "emergency"})`].filter(Boolean).join(", ");
+}
+function flightLink(id, text) { return id ? link(text, "flight=" + id) : text; }
+const KIND_NAMES = {passenger: "Passenger airlines", cargo: "Cargo", business: "Business jets and charter", private: "Private", government: "Government and military", other: "Other or unknown"};
+// "Going to" and "Coming from" lists of airports, each linking to that airport's flights
+function endsCards(to, from, toNote, fromNote, kind) {
+  const cell = r => el("span", null, link(r.name || r.airport, "dest=" + r.airport + (kind ? "&kind=" + kind : "")), el("div", {class: "sub"}, r.airport));
+  const cols = [{label: "Airport", value: cell}, {label: "Flights", num: true, value: r => r.flights}];
+  return el("div", {class: "grid"}, card("Going to", toNote, table(cols, to, "No routes known.")), card("Coming from", fromNote, table(cols, from, "No routes known.")));
+}
+function routeText(r) {
+  if (!r.origin) return "–";
+  return el("span", null, link(r.origin_name || r.origin, "dest=" + r.origin), " → ", link(r.destination_name || r.destination, "dest=" + r.destination),
+    el("div", {class: "sub"}, `${r.origin}–${r.destination}`));
+}
+// Aircraft type: readable name linking to the type's page, with the ICAO designator or registry model underneath
+function typeCell(r) {
+  const key = r.actype || r.type;
+  if (!key) return "–";
+  return el("span", null, link(r.type_name || key, "type=" + encodeURIComponent(r.actype || r.type)),
+    r.type_name ? el("div", {class: "sub"}, r.actype) : null, r.cargo ? el("div", {class: "sub"}, "Cargo · " + r.cargo) : null);
+}
+let route = {tab: "overview"}, request = 0, afterRender = null;
+
+function el(tag, attrs, ...kids) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) { if (k === "class") node.className = v; else node.setAttribute(k, v); }
+  for (const kid of kids) if (kid !== null && kid !== undefined && kid !== false) node.append(kid);
+  return node;
+}
+function svg(tag, attrs) { const n = document.createElementNS(SVG, tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); return n; }
+function when(t) { return t ? new Date(t * 1000).toLocaleString([], {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"}) : "–"; }
+function link(text, hash) { return el("a", {href: "#" + hash}, text); }
+function hm(t) { return new Date(t * 1000).toLocaleTimeString([], {hour: "numeric", minute: "2-digit"}); }
+function planeLink(key) { return key ? link(key, "plane=" + encodeURIComponent(key)) : "–"; }
+function n(v) { return v === null || v === undefined ? "–" : fmt.format(v); }
+function card(title, note, ...kids) { return el("section", {class: "card"}, el("h2", null, title), note ? el("p", {class: "note"}, note) : null, ...kids); }
+function tile(value, label) { return el("div", {class: "tile"}, el("b", null, n(value)), el("span", null, label)); }
+function linkTile(value, label, hash, fresh) {
+  return el("a", {class: "tile" + (fresh ? " has-new" : ""), href: "#" + hash}, el("b", null, n(value), fresh ? el("span", {class: "badge"}, `${fresh} new`) : null), el("span", null, label));
+}
+function table(columns, rows, empty) {
+  if (!rows.length) return el("p", {class: "empty"}, empty || "Nothing in this period.");
+  const head = el("tr", null, ...columns.map(c => el("th", c.num ? {class: "num"} : null, c.label)));
+  const body = rows.map(r => el("tr", null, ...columns.map(c => { const v = c.value(r); return el("td", c.num ? {class: "num"} : c.mono ? {class: "mono"} : null, typeof v === "number" ? n(v) : v); })));
+  return el("div", {class: "scroll"}, el("table", null, head, ...body));
+}
+function params(extra) { return new URLSearchParams({days: $("days").value, r: $("radius").value, ...extra}); }
+async function api(name, extra) {
+  const response = await fetch(`api/${name}?${params(extra)}`, {cache: "no-store"});
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || response.status);
+  return data;
+}
+function periodText() { return $("days").selectedOptions[0].textContent.toLowerCase(); }
+function airlineCell(code, name) { return code ? el("span", null, link(name || code, "airline=" + code), el("div", {class: "sub"}, code)) : "–"; }
+function airportCell(ident, name) { return el("span", null, link(name || ident, "airport=" + ident), el("div", {class: "sub"}, ident)); }
+
+// Daily bars, one or two series side by side, with a tooltip per day
+function bars(days, series) {
+  const box = el("div", {class: "chart"});
+  if (!days.length) { box.append(el("p", {class: "empty"}, "Nothing in this period.")); return box; }
+  if (series.length > 1) box.append(el("div", {class: "legend"}, ...series.map(s => el("span", null, el("i", {style: `background:${s.color}`}), s.label))));
+  const w = 1000, h = 160, pad = 18, max = Math.max(1, ...days.flatMap(d => series.map(s => d[s.key] || 0)));
+  const slot = w / days.length, gap = Math.min(2, slot * 0.1), barW = Math.max(1, (slot - gap * (series.length + 1)) / series.length);
+  const chart = svg("svg", {viewBox: `0 0 ${w} ${h}`, preserveAspectRatio: "none", role: "img", "aria-label": series.map(s => s.label).join(" and ") + " per day"});
+  chart.append(svg("line", {x1: 0, x2: w, y1: h - pad, y2: h - pad, stroke: "var(--axis)", "vector-effect": "non-scaling-stroke"}));
+  days.forEach((d, i) => series.forEach((s, j) => {
+    const v = d[s.key] || 0, bh = v / max * (h - 2 * pad);
+    chart.append(svg("rect", {x: i * slot + gap + j * (barW + gap), y: h - pad - bh, width: barW, height: bh, rx: Math.min(4, barW / 2), fill: s.color}));
+  }));
+  const tip = el("div", {class: "tip hide"});
+  box.append(chart, tip, el("div", {class: "sub", style: "display:flex;justify-content:space-between"}, el("span", null, days[0].day), el("span", null, days[days.length - 1].day)));
+  chart.addEventListener("mousemove", e => {
+    const r = chart.getBoundingClientRect(), i = Math.min(days.length - 1, Math.max(0, Math.floor((e.clientX - r.left) / r.width * days.length)));
+    tip.textContent = `${days[i].day}: ` + series.map(s => `${n(days[i][s.key] || 0)} ${s.label.toLowerCase()}`).join(", ");
+    tip.classList.remove("hide");
+    tip.style.left = Math.min(r.width - tip.offsetWidth, Math.max(0, e.clientX - r.left - tip.offsetWidth / 2)) + "px";
+  });
+  chart.addEventListener("mouseleave", () => tip.classList.add("hide"));
+  return box;
+}
+const BLUE = "var(--series)", ORANGE = "var(--series-2)";
+
+// Flight paths for one plane, drawn with OpenLayers (a copy of SkyAware's, as on garage_pi) over OpenStreetMap tiles
+const MAP_FLIGHTS = 30, TRACK_GAP_SECONDS = 300;
+let olLoading = null;
+function loadOl() {
+  if (!olLoading) {
+    olLoading = new Promise((resolve, reject) => {
+      document.head.append(el("link", {rel: "stylesheet", href: "ol/ol.css"}));
+      const script = el("script", {src: "ol/ol.js"});
+      script.onload = resolve;
+      script.onerror = () => { olLoading = null; reject(new Error("The map library didn't load.")); };
+      document.head.append(script);
+    });
+  }
+  return olLoading;
+}
+function token(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+function segments(points) {
+  const out = [];
+  points.forEach((p, i) => { if (!i || p[0] - points[i - 1][0] > TRACK_GAP_SECONDS) out.push([]); out[out.length - 1].push(ol.proj.fromLonLat([p[2], p[1]])); });
+  return out.filter(s => s.length > 1);
+}
+function houseFeature(home, ink, surface) {
+  const house = new ol.Feature(new ol.geom.Point(ol.proj.fromLonLat([home[1], home[0]])));
+  house.setStyle(new ol.style.Style({image: new ol.style.RegularShape({points: 4, radius: 8, angle: 0, fill: new ol.style.Fill({color: ink}), stroke: new ol.style.Stroke({color: surface, width: 2})})}));
+  return house;
+}
+async function drawFlightMap(box, flight, home, goArounds) {
+  if (!flight.points) { box.replaceChildren(el("p", {class: "empty"}, "No saved path for this flight.")); return; }
+  try { await loadOl(); } catch (err) { box.replaceChildren(el("p", {class: "empty"}, err.message)); return; }
+  const points = (await api("track", {id: flight.id})).points;
+  if (!box.isConnected) return;
+  const blue = token("--series"), orange = token("--series-2"), surface = token("--surface"), ink = token("--ink");
+  const parts = segments(points), features = [houseFeature(home, ink, surface)];
+  if (parts.length) {
+    const line = new ol.Feature(new ol.geom.MultiLineString(parts));
+    line.setStyle([new ol.style.Style({stroke: new ol.style.Stroke({color: surface, width: 6})}), new ol.style.Style({stroke: new ol.style.Stroke({color: blue, width: 2.5})})]);
+    features.unshift(line);
+  }
+  // One dot per go-around found in the track; garage_pi's single flag is the fallback
+  const spots = (goArounds || []).map(g => [g.lon, g.lat]);
+  if (!spots.length && flight.go_around_at && points.length) {
+    const low = points.reduce((a, b) => Math.abs(b[0] - flight.go_around_at) < Math.abs(a[0] - flight.go_around_at) ? b : a);
+    spots.push([low[2], low[1]]);
+  }
+  for (const spot of spots) {
+    const dot = new ol.Feature(new ol.geom.Point(ol.proj.fromLonLat(spot)));
+    dot.setStyle(new ol.style.Style({image: new ol.style.Circle({radius: 7, fill: new ol.style.Fill({color: orange}), stroke: new ol.style.Stroke({color: surface, width: 2})})}));
+    features.push(dot);
+  }
+  const source = new ol.source.Vector({features});
+  const map = new ol.Map({target: box, layers: [new ol.layer.Tile({source: new ol.source.OSM(), className: "osm-tiles"}), new ol.layer.Vector({source})],
+    view: new ol.View({center: ol.proj.fromLonLat([home[1], home[0]]), zoom: 9})});
+  map.getView().fit(source.getExtent(), {padding: [32, 32, 32, 32], maxZoom: 12});
+}
+async function drawPlaneMap(box, flights, home, rows) {
+  const tracked = flights.filter(f => f.points > 0).slice(0, MAP_FLIGHTS);
+  if (!tracked.length) { box.replaceChildren(el("p", {class: "empty"}, "No saved tracks for this aircraft in this period.")); return; }
+  try { await loadOl(); } catch (err) { box.replaceChildren(el("p", {class: "empty"}, err.message)); return; }
+  const tracks = await Promise.all(tracked.map(f => api("track", {id: f.id}).then(d => [f.id, d.points]).catch(() => [f.id, []])));
+  if (!box.isConnected) return;
+  const blue = token("--series"), orange = token("--series-2"), surface = token("--surface"), ink = token("--ink");
+  const normal = new ol.style.Style({stroke: new ol.style.Stroke({color: blue, width: 2})});
+  const picked = [new ol.style.Style({stroke: new ol.style.Stroke({color: surface, width: 7})}), new ol.style.Style({stroke: new ol.style.Stroke({color: orange, width: 3.5})})];
+  const lines = new ol.source.Vector(), byId = {};
+  tracks.forEach(([id, points]) => {
+    const parts = segments(points);
+    if (!parts.length) return;
+    const feature = new ol.Feature(new ol.geom.MultiLineString(parts));
+    feature.setStyle(normal);
+    byId[id] = feature;
+    lines.addFeature(feature);
+  });
+  const house = new ol.Feature(new ol.geom.Point(ol.proj.fromLonLat([home[1], home[0]])));
+  house.setStyle(new ol.style.Style({image: new ol.style.RegularShape({points: 4, radius: 8, angle: 0, fill: new ol.style.Fill({color: ink}), stroke: new ol.style.Stroke({color: surface, width: 2})})}));
+  const map = new ol.Map({target: box, layers: [new ol.layer.Tile({source: new ol.source.OSM(), className: "osm-tiles"}),
+    new ol.layer.Vector({source: lines}), new ol.layer.Vector({source: new ol.source.Vector({features: [house]})})],
+    view: new ol.View({center: ol.proj.fromLonLat([home[1], home[0]]), zoom: 9})});
+  if (lines.getFeatures().length) map.getView().fit(lines.getExtent(), {padding: [28, 28, 28, 28], maxZoom: 12});
+  let current = null;
+  const pick = id => {
+    if (current) current.setStyle(normal);
+    current = byId[id] || null;
+    rows.forEach((tr, fid) => tr.classList.toggle("picked", fid === id));
+    if (!current) return;
+    current.setStyle(picked);
+    lines.removeFeature(current); lines.addFeature(current);  // draw it on top
+    map.getView().fit(current.getGeometry().getExtent(), {padding: [40, 40, 40, 40], maxZoom: 12, duration: 300});
+    box.scrollIntoView({behavior: "smooth", block: "nearest"});
+  };
+  rows.forEach((tr, id) => { const button = tr.querySelector(".view-track"); if (button) button.addEventListener("click", () => pick(id)); });
+}
+function pairs(rows) { return rows.map(([day, count]) => ({day, count})); }
+
+const VIEWS = {
+  async overview() {
+    const [s, ranked] = await Promise.all([api("summary"), api("planes", {sort: "visits"})]);
+    const top = ranked.planes.slice(0, TOP_PLANES), most = top.length ? top[0].visits : 1;
+    const mb = s.bytes / 1e6;
+    if (seenId() === null) markSeen(s.notable.map(x => x.id));
+    const fresh = kind => s.notable.filter(x => x.kind === kind && isNew(x.id)).length;
+    $("updated").textContent = `Last synced ${when(s.store.last_sync)}${s.store.last_error ? " · sync problem: " + s.store.last_error : ""}`;
+    return [
+      el("section", {class: "tiles"}, tile(s.flights, "Flights logged"), tile(s.aircraft, "Different aircraft"), tile(s.takeoffs, "Takeoffs seen"),
+        tile(s.landings, "Landings seen"), tile(s.overhead, `Over the house (within ${s.radius} km)`), tile(s.interesting, "Interesting flights"),
+        linkTile(s.go_arounds, "Go-arounds", "tab=notable", fresh("go_around")), linkTile(s.emergencies, "Emergency squawks", "tab=notable", fresh("emergency")),
+        linkTile(s.diversions, "Diversions", "tab=diversions"), linkTile(s.vip, "VIP flights", "tab=interesting"),
+        linkTile(s.cargo, "Cargo flights", "tab=cargo"), linkTile(s.types, "Aircraft types", "tab=types")),
+      card(`Top ${TOP_PLANES}: the planes seen most`, `${periodText()}, by flights heard. Click a tail number for its flights and paths. `,
+        link("Full leaderboard", "tab=planes&sort=visits"),
+        table([{label: "#", num: true, value: r => top.indexOf(r) + 1}, {label: "Tail number", mono: true, value: r => planeLink(r.key)},
+          {label: "Type", value: typeCell}, {label: "Owner or operator", value: r => r.owner || "–"},
+          {label: "Times seen", value: r => el("span", {class: "rankbar"}, el("i", {style: `width:${Math.max(3, 78 * r.visits / most)}%`}), el("b", null, n(r.visits)))},
+          {label: "Last seen", value: r => when(r.last_seen)}], top)),
+      card("Flights per day", `${periodText()}, by local day`, bars(s.daily, [{key: "flights", label: "Flights", color: BLUE}])),
+      card("Takeoffs and landings per day", "All airports in range", bars(s.daily, [{key: "takeoffs", label: "Takeoffs", color: BLUE}, {key: "landings", label: "Landings", color: ORANGE}])),
+      card("Storage", null, el("p", {class: "note"}, `${mb < 1000 ? mb.toFixed(0) + " MB" : (mb / 1000).toFixed(2) + " GB"} of ${s.cap_bytes / 1e9} GB used. Logging since ${when(s.first)}. Above the limit, the oldest tracks go first, then the oldest flights; interesting flights are always kept.`)),
+    ];
+  },
+  async planes() {
+    const d = await api("planes", {sort: route.sort || "movements"});
+    const sort = el("select", {"aria-label": "Rank by"}, el("option", {value: "movements"}, "Rank by takeoffs and landings"), el("option", {value: "visits"}, "Rank by times seen"));
+    sort.value = route.sort || "movements";
+    sort.addEventListener("change", () => { location.hash = "tab=planes&sort=" + sort.value; });
+    return [card("Leaderboard", `The 200 most frequent aircraft, ${periodText()}. Click one to see its takeoffs and landings.`, sort,
+      table([{label: "#", num: true, value: r => d.planes.indexOf(r) + 1}, {label: "Tail number", mono: true, value: r => planeLink(r.key)},
+        {label: "Type", value: typeCell},
+        {label: "Owner or operator", value: r => r.owner || "–"}, {label: "Takeoffs", num: true, value: r => r.takeoffs},
+        {label: "Landings", num: true, value: r => r.landings}, {label: "Times seen", num: true, value: r => r.visits}, {label: "Last seen", value: r => when(r.last_seen)}], d.planes))];
+  },
+  async plane() {
+    const d = await api("plane", {key: route.plane});
+    const latest = d.flights[0] || {};
+    const mapBox = el("div", {class: "map"}), rows = new Map();
+    const seen = table([{label: "When", value: r => flightLink(r.id, when(r.first_seen))}, {label: "Flight", mono: true, value: r => r.callsign || "–"},
+      {label: "Airline", value: r => airlineCell(r.airline, r.airline_name)}, {label: "Route", value: routeText}, {label: "Altitude", value: r => r.alt_min === null ? "–" : `${n(r.alt_min)}–${n(r.alt_max)} ft`},
+      {label: "Closest to house", num: true, value: r => r.closest_km === null ? "–" : `${r.closest_km} km`},
+      {label: "Path", value: r => r.points > 0 ? el("button", {class: "view-track", type: "button"}, "Show on map") : "–"}], d.flights);
+    seen.querySelectorAll("tr").forEach((tr, i) => { if (i) rows.set(d.flights[i - 1].id, tr); });
+    afterRender = () => drawPlaneMap(mapBox, d.flights, d.home, rows);
+    const tracked = Math.min(MAP_FLIGHTS, d.flights.filter(f => f.points > 0).length);
+    return [
+      card(`${d.key}${latest.type_name || latest.type ? " · " + (latest.type_name || latest.type) : ""}${latest.cargo ? " · Cargo" : ""}`,
+        [latest.cargo, [latest.make, latest.model, latest.year].filter(Boolean).join(" "), latest.registrant || latest.operator].filter(Boolean).join(" · "),
+        el("section", {class: "tiles"}, tile(d.events.filter(e => e.kind === "takeoff").length, `Takeoffs, ${periodText()}`), tile(d.events.filter(e => e.kind === "landing").length, `Landings, ${periodText()}`),
+          tile(d.flights.length, `Times seen, ${periodText()}`), tile(d.all_time.visits, "Times seen, all time")),
+        el("p", {class: "note", style: "margin-top:10px"}, `First seen ${when(d.all_time.first)}, last seen ${when(d.all_time.last)}.`)),
+      el("div", {class: "grid"},
+        card("By airport", null, table([{label: "Airport", value: r => airportCell(r.airport, r.name)}, {label: "Takeoffs", num: true, value: r => r.takeoffs}, {label: "Landings", num: true, value: r => r.landings}], d.airports, "No takeoffs or landings seen.")),
+        card("Takeoffs and landings", null, table([{label: "When", value: r => when(r.t)}, {label: "", value: r => r.kind === "takeoff" ? "Takeoff" : "Landing"}, {label: "Airport", value: r => airportCell(r.airport, r.airport_name)}, {label: "Flight", mono: true, value: r => r.callsign || "–"}], d.events, "None seen."))),
+      card("Flight paths", tracked ? `The latest ${tracked} saved track${tracked === 1 ? "" : "s"}, ${periodText()}. The square is the house. Use "Show on map" below to pick one out.` : null, mapBox),
+      card("Times seen", null, seen),
+    ];
+  },
+  async airlines() {
+    const d = await api("airlines");
+    return [card("Airlines", `By flight number prefix, ${periodText()}. Click one for its airports and aircraft.`,
+      table([{label: "Airline", value: r => el("span", null, airlineCell(r.code, r.name), r.cargo ? el("div", {class: "sub"}, "Cargo") : null)},
+        {label: "Flights", num: true, value: r => r.flights}, {label: "Aircraft", num: true, value: r => r.aircraft},
+        {label: "Takeoffs", num: true, value: r => r.takeoffs}, {label: "Landings", num: true, value: r => r.landings}], d.airlines))];
+  },
+  async airline() {
+    const d = await api("airline", {code: route.airline});
+    return [card(`${d.name} (${d.code})${d.cargo ? " · Cargo" : ""}`, `Flights per day, ${periodText()}`, bars(pairs(d.daily), [{key: "count", label: "Flights", color: BLUE}])),
+      el("div", {class: "grid"},
+        card("Takeoffs and landings by airport", null, table([{label: "Airport", value: r => airportCell(r.airport, r.name)}, {label: "Takeoffs", num: true, value: r => r.takeoffs}, {label: "Landings", num: true, value: r => r.landings}], d.airports)),
+        card("Aircraft types", null, table([{label: "Type", value: r => typeCell({...r, type: r.key})}, {label: "Flights", num: true, value: r => r.flights}], d.types))),
+      endsCards(d.to, d.from, `Where ${d.name} flights heard here were going, ${periodText()}`, `Where they came from`),
+      el("div", {class: "grid"},
+        card("Most seen aircraft", null, table([{label: "Tail number", mono: true, value: r => planeLink(r.key)}, {label: "Type", value: r => typeCell({...r, key: undefined})}, {label: "Times seen", num: true, value: r => r.visits}, {label: "Last seen", value: r => when(r.last_seen)}], d.planes)))];
+  },
+  async types() {
+    const d = await api("types");
+    return [card("Aircraft types", `${periodText()}, most seen first. Types come from PiAware's aircraft database, or the aircraft registry when that's missing. Click one for where it lands and takes off.`,
+      table([{label: "Type", value: r => typeCell({...r, type: r.key})}, {label: "Flights", num: true, value: r => r.flights}, {label: "Aircraft", num: true, value: r => r.aircraft},
+        {label: "Takeoffs", num: true, value: r => r.takeoffs}, {label: "Landings", num: true, value: r => r.landings}, {label: "Cargo flights", num: true, value: r => r.cargo},
+        {label: "Last seen", value: r => when(r.last_seen)}], d.types))];
+  },
+  async type() {
+    const d = await api("actype", {key: route.type});
+    return [
+      card(`${d.name}${d.actype && d.name !== d.actype ? ` (${d.actype})` : ""}`, `Flights per day, ${periodText()}`,
+        el("section", {class: "tiles", style: "margin-bottom:12px"}, tile(d.flights, "Flights"), tile(d.aircraft, "Different aircraft"), tile(d.takeoffs, "Takeoffs"), tile(d.landings, "Landings")),
+        bars(pairs(d.daily), [{key: "count", label: "Flights", color: BLUE}])),
+      el("div", {class: "grid"},
+        card("Takeoffs and landings by airport", null, table([{label: "Airport", value: r => airportCell(r.airport, r.name)}, {label: "Takeoffs", num: true, value: r => r.takeoffs}, {label: "Landings", num: true, value: r => r.landings}], d.airports, "None seen.")),
+        card("Airlines", null, table([{label: "Airline", value: r => airlineCell(r.code, r.name)}, {label: "Flights", num: true, value: r => r.flights}], d.airlines)),
+        card("Most seen aircraft", null, table([{label: "Tail number", mono: true, value: r => planeLink(r.key)}, {label: "Owner or operator", value: r => r.owner || "–"}, {label: "Times seen", num: true, value: r => r.visits}], d.planes))),
+      card("Latest", null, table([{label: "When", value: r => flightLink(r.id, when(r.first_seen))}, {label: "Tail number", mono: true, value: r => planeLink(r.key)}, {label: "Flight", mono: true, value: r => r.callsign || "–"},
+        {label: "Route", value: routeText}, {label: "Cargo", value: r => r.cargo || "–"}, {label: "Closest to house", num: true, value: r => r.closest_km === null ? "–" : `${r.closest_km} km`}], d.recent)),
+    ];
+  },
+  async destinations() {
+    const kind = route.kind || "", from = route.from || "";
+    const d = await api("destinations", {...(kind ? {kind} : {}), ...(from ? {from} : {})});
+    const hash = (k, f) => "#tab=destinations" + (k ? "&kind=" + k : "") + (f ? "&from=" + f : "");
+    const all = d.kinds.reduce((a, k) => ({flights: a.flights + k.flights, routed: a.routed + k.routed}), {flights: 0, routed: 0});
+    // Departures are picked by route, so every one has a route; the share only means something for all flights
+    const share = k => d.departing ? "" : k.flights ? Math.round(k.routed / k.flights * 100) + "% with a route" : "none";
+    const chip = (key, label, k) => el("a", {class: "tile" + (kind === key ? " has-new" : ""), href: hash(key, from)},
+      el("b", null, n(k.flights)), el("span", null, label), el("div", {class: "sub"}, share(k)));
+    const departing = el("select", {"aria-label": "Departing from"}, el("option", {value: ""}, "All flights heard here"),
+      ...d.local.map(a => el("option", {value: a.ident}, `Departing ${a.name} (${a.ident})`)),
+      el("option", {value: "other"}, `Starting anywhere else (arrivals and overflights)`));
+    departing.value = d.departing;
+    departing.addEventListener("change", () => { location.hash = hash(kind, departing.value).slice(1); });
+    const fromLocal = d.local.find(a => a.ident === d.departing);
+    const where = fromLocal ? ` departing ${fromLocal.name}` : d.departing ? ` not departing ${d.local.map(a => a.ident).join(" or ")}` : "";
+    const label = (kind ? KIND_NAMES[kind].toLowerCase() : "all flights") + where;
+    const ends = fromLocal
+      ? el("div", {class: "grid"}, card("Going to", `Destinations of ${label}, ${periodText()}, by route`, table([{label: "Airport", value: r => el("span", null, link(r.name || r.airport, "dest=" + r.airport + (kind ? "&kind=" + kind : "")), el("div", {class: "sub"}, r.airport))}, {label: "Flights", num: true, value: r => r.flights}], d.to, "No routes known.")))
+      : endsCards(d.to, d.from, `Destinations of ${label}, ${periodText()}`, `Origins of ${label}, ${periodText()}`, kind);
+    return [
+      el("div", {class: "bar"}, departing),
+      el("section", {class: "tiles"}, chip("", "All flights", all), ...d.kinds.map(k => chip(k.kind, KIND_NAMES[k.kind], k))),
+      ends,
+      el("p", {class: "note"}, `Routes come from Virtual Radar Server's community route list, matched by flight number, since aircraft don't broadcast where they're going. Scheduled airline and cargo flights are well covered; private and charter flights rarely are. A route that contradicts a takeoff or landing seen here is ignored as out of date. On a multi-stop route that doesn't stop here, the leg is the one whose ends best match where the track started and finished.`),
+    ];
+  },
+  async dest() {
+    const kind = route.kind || "";
+    const d = await api("dest", {airport: route.dest, ...(kind ? {kind} : {})});
+    return [
+      el("div", {class: "grid"},
+        card("By airline", "Flights heard here going to or coming from this airport", table([{label: "Airline", value: r => airlineCell(r.code, r.name)},
+          {label: "Going", num: true, value: r => r.going}, {label: "Coming", num: true, value: r => r.coming}], d.airlines, "None.")),
+        card("By flight type", d.local ? null : `${periodText()}`, table([{label: "Flight type", value: r => link(KIND_NAMES[r.kind], `dest=${d.airport}&kind=${r.kind}`)}, {label: "Flights", num: true, value: r => r.flights}], d.kinds, "None."),
+          d.local ? el("p", {class: "note", style: "margin-top:8px"}, link("Takeoffs and landings seen at this airport", "airport=" + d.airport)) : null)),
+      card(`${d.name} (${d.airport})`, `Flights heard here going to or coming from it${kind ? ", " + KIND_NAMES[kind].toLowerCase() : ""}, ${periodText()}`,
+      table([{label: "When", value: r => flightLink(r.id, when(r.first_seen))}, {label: "Tail number", mono: true, value: r => planeLink(r.key)}, {label: "Flight", mono: true, value: r => r.callsign || "–"},
+        {label: "Type", value: typeCell}, {label: "Flight type", value: r => KIND_NAMES[r.kind]}, {label: "Route", value: routeText}], d.flights, "None in this period."))];
+  },
+  async cargo() {
+    const d = await api("cargo");
+    return [
+      card("Cargo flights per day", `${periodText()}. Cargo means a cargo airline's callsign, an aircraft registered to a cargo company, or a freighter model. Passenger airlines' own freighters flying under their passenger callsign are only caught by the freighter model.`,
+        bars(pairs(d.daily), [{key: "count", label: "Cargo flights", color: BLUE}])),
+      card("Cargo carriers", null, table([{label: "Carrier", value: r => r.carrier}, {label: "Flights", num: true, value: r => r.flights}, {label: "Aircraft", num: true, value: r => r.aircraft},
+        {label: "Takeoffs", num: true, value: r => r.takeoffs}, {label: "Landings", num: true, value: r => r.landings}], d.carriers)),
+      card("Latest cargo flights", null, table([{label: "When", value: r => flightLink(r.id, when(r.first_seen))}, {label: "Tail number", mono: true, value: r => planeLink(r.key)},
+        {label: "Flight", mono: true, value: r => r.callsign || "–"}, {label: "Type", value: r => typeCell({...r, cargo: null})}, {label: "Carrier", value: r => r.cargo}, {label: "Route", value: routeText},
+        {label: "Closest to house", num: true, value: r => r.closest_km === null ? "–" : `${r.closest_km} km`}], d.recent)),
+    ];
+  },
+  async airports() {
+    const d = await api("airports");
+    return [card("Airports", `Takeoffs and landings seen, ${periodText()}. Click one for its daily counts and airlines.`,
+      table([{label: "Airport", value: r => airportCell(r.airport, r.name)}, {label: "Takeoffs", num: true, value: r => r.takeoffs}, {label: "Landings", num: true, value: r => r.landings}, {label: "Total", num: true, value: r => r.takeoffs + r.landings}], d.airports))];
+  },
+  async airport() {
+    const d = await api("airport", {ident: route.airport});
+    const kind = k => k === "takeoff" ? "Takeoff" : "Landing";
+    return [card(`${d.name} (${d.ident})`, `Takeoffs and landings per day, ${periodText()}`, bars(d.daily, [{key: "takeoffs", label: "Takeoffs", color: BLUE}, {key: "landings", label: "Landings", color: ORANGE}])),
+      el("div", {class: "grid"},
+        card("By airline", null, table([{label: "Airline", value: r => airlineCell(r.code, r.name)}, {label: "Takeoffs", num: true, value: r => r.takeoffs}, {label: "Landings", num: true, value: r => r.landings}], d.airlines)),
+        card("Latest", null, table([{label: "When", value: r => flightLink(r.id, when(r.t))}, {label: "", value: r => kind(r.kind)}, {label: "Tail number", mono: true, value: r => planeLink(r.key)}, {label: "Flight", mono: true, value: r => r.callsign || "–"}, {label: "Type", value: typeCell}], d.recent))),
+      endsCards(d.to, d.from, `Destinations of flights leaving ${d.name}, by route, ${periodText()}`, `Origins of flights arriving at ${d.name}`)];
+  },
+  async overhead() {
+    const alt = el("select", {"aria-label": "Altitude"}, el("option", {value: ""}, "Any altitude"), el("option", {value: "10000"}, "Below 10,000 ft"), el("option", {value: "5000"}, "Below 5,000 ft"), el("option", {value: "3000"}, "Below 3,000 ft"));
+    alt.value = route.alt || "";
+    alt.addEventListener("change", () => { location.hash = "tab=overhead" + (alt.value ? "&alt=" + alt.value : ""); });
+    const d = await api("overhead", route.alt ? {alt: route.alt} : {});
+    const where = r => `${r.closest_km} km${r.closest_alt !== null ? `, ${n(r.closest_alt)} ft` : ""}`;
+    return [
+      card(`Flights over the house: ${n(d.total)}`, `Within ${d.radius} km of the house, ${periodText()}. The closest point of each flight path is used, so a plane passing between two position reports still counts.`, alt,
+        bars(pairs(d.daily), [{key: "count", label: "Flights over the house", color: BLUE}])),
+      el("div", {class: "grid"},
+        card("Lowest", null, table([{label: "Tail number", mono: true, value: r => planeLink(r.key)}, {label: "Flight", mono: true, value: r => r.callsign || "–"}, {label: "Type", value: typeCell}, {label: "Altitude", num: true, value: r => `${n(r.closest_alt)} ft`}, {label: "When", value: r => when(r.closest_at)}], d.lowest)),
+        card("Latest", null, table([{label: "When", value: r => flightLink(r.id, when(r.closest_at || r.first_seen))}, {label: "Tail number", mono: true, value: r => planeLink(r.key)}, {label: "Flight", mono: true, value: r => r.callsign || "–"}, {label: "Type", value: typeCell}, {label: "Closest", value: where}], d.flights))),
+    ];
+  },
+  async notable() {
+    const d = await api("notable");
+    if (listSeen === undefined) listSeen = seenId();
+    const rows = d.flights.map(r => ({...r, fresh: listSeen !== null && r.id > listSeen}));
+    const freshCount = rows.filter(r => r.fresh).length;
+    afterRender = () => markSeen(rows.map(r => r.id));
+    const body = table([{label: "When", value: r => el("span", null, flightLink(r.id, when(r.go_around_at || r.first_seen)), r.fresh ? el("span", {class: "badge"}, "New") : null)},
+      {label: "What happened", value: r => notableText(r) + (r.go_around_count > 1 ? ` (${r.go_around_count} times)` : "")},
+      {label: "Time added", value: r => r.added_s === null || r.added_s === undefined ? "–" : (r.added_at_least ? "at least " : "about ") + duration(r.added_s)},
+      {label: "Tail number", mono: true, value: r => planeLink(r.key)}, {label: "Flight", mono: true, value: r => r.callsign || "–"},
+      {label: "Type", value: typeCell}, {label: "Airline", value: r => airlineCell(r.airline, r.airline_name)}], rows, "None in this period.");
+    body.querySelectorAll("tr").forEach((tr, i) => { if (i && rows[i - 1].fresh) tr.classList.add("new"); });
+    return [card("Go-arounds and emergencies", `${periodText()}, newest first. ${freshCount ? `${freshCount} new since you last looked, highlighted. ` : ""}Click a time for the flight's details and path. They appear here about 30–40 minutes after the flight is last heard; the aircraft log on garage_pi shows them live.`, body)];
+  },
+  async diversions() {
+    const d = await api("diversions");
+    const kinds = {returned: "Turned back", here: "Diverted here", away: "Diverted away"};
+    const body = table([{label: "When", value: r => flightLink(r.id, when(r.diversion.t))}, {label: "Kind", value: r => kinds[r.diversion.kind]},
+      {label: "What happened", value: r => diversionText(r.diversion)}, {label: "Tail number", mono: true, value: r => planeLink(r.key)},
+      {label: "Flight", mono: true, value: r => r.callsign || "–"}, {label: "Type", value: typeCell},
+      {label: "Airline", value: r => airlineCell(r.airline, r.airline_name)}], d.flights, "None in this period.");
+    return [card("Diversions", `${periodText()}, newest first. Airline flights that went somewhere other than usual, judged from what was seen here: ` +
+      "a flight that turned back to the airport it left; one that landed where, on at least 3 other days, its flight number only flew over; " +
+      "and one that came down towards the airport its flight number usually lands at, then climbed away or landed elsewhere. " +
+      "Weather, a medical emergency or a problem with the aircraft are the usual reasons, but the reason isn't broadcast.", body)];
+  },
+  async flight() {
+    const d = await api("flight", {id: route.flight});
+    const f = d.flight;
+    if (!f) return [card("Flight not found", "It may have been removed to save space.")];
+    const mapBox = el("div", {class: "map"});
+    afterRender = () => drawFlightMap(mapBox, f, d.home, d.go_arounds);
+    const fact = (label, value) => value === null || value === undefined || value === "" ? [] : [el("dt", null, label), el("dd", null, value)];
+    const lines = list => list.length ? el("div", null, ...list.map(t => el("div", null, t))) : null;
+    const gas = d.go_arounds || [];
+    const total = gas.reduce((sum, g) => sum + (g.added_s || 0), 0);
+    const what = [notableText({...f, airport_name: f.go_around_name}), d.diversion && {returned: "Turned back", here: "Diverted", away: "Diverted"}[d.diversion.kind]]
+      .filter(Boolean).join(", ");
+    return [
+      card(`${f.callsign || f.reg || f.hex}${what ? " · " + what : ""}`, null, el("dl", {class: "facts"},
+        ...fact("Tail number", planeLink(f.reg || f.hex)), ...fact("Type", f.actype || f.type ? typeCell({...f, cargo: null}) : null),
+        ...fact("Aircraft", [f.make, f.model, f.year].filter(Boolean).join(" ")), ...fact("Flight type", KIND_NAMES[f.kind]), ...fact("Cargo", f.cargo),
+        ...fact("Route", f.origin ? routeText(f) : "Unknown"),
+        ...fact("Airline", f.airline ? airlineCell(f.airline, f.airline_name) : null), ...fact("Owner or operator", f.registrant || f.operator),
+        ...fact("Heard", `${when(f.first_seen)} to ${when(f.last_seen)}`), ...fact("Altitude", f.alt_min === null ? null : `${n(f.alt_min)}–${n(f.alt_max)} ft`),
+        ...fact(gas.length > 1 ? "Go-arounds" : "Go-around", gas.length ? lines(goAroundLines(gas))
+          : f.go_around ? `${f.go_around_name || f.go_around} at ${when(f.go_around_at)}` : null),
+        ...fact("Time added", gas.some(g => g.added_s !== null) ? `${gas.some(g => g.how === "at least") ? "At least" : "About"} ${duration(total)}` +
+          (gas.length > 1 ? ` across ${gas.length} go-arounds` : "") : null),
+        ...fact("Diversion", d.diversion ? diversionText(d.diversion) : null),
+        ...fact("VIP aircraft", f.vip ? `${f.vip}. Who is aboard isn't broadcast.` : null),
+        ...fact("Squawk", f.emergency ? `${f.emergency} (${EMERGENCY_NAMES[f.emergency] || "emergency"})` : null),
+        ...fact("Takeoffs and landings", d.events.length ? d.events.map(e => `${e.kind === "takeoff" ? "Took off from" : "Landed at"} ${e.airport_name} at ${when(e.t)}`).join("; ") : "None seen"),
+        ...fact("Closest to house", f.closest_km === null ? null : `${f.closest_km} km${f.closest_alt !== null ? ` at ${n(f.closest_alt)} ft` : ""}, ${when(f.closest_at)}`))),
+      card("Flight path", f.points ? `The square is the house${gas.length > 1 ? "; the orange dots are where it went around" : gas.length || f.go_around ? "; the orange dot is where it went around" : ""}.` : null, mapBox),
+    ];
+  },
+  async interesting() {
+    // The search covers every interesting flight ever stored, whatever period is picked above
+    const flags = r => [r.vip && el("span", {class: "vip"}, "VIP"), [r.emergency && `Squawked ${r.emergency}`, r.go_around && `Go-around at ${r.go_around}`,
+      FLAGS.grp[r.grp], r.ladd && "On opt-out list", r.private && "Private"].filter(Boolean).join(", ")].filter(Boolean);
+    const why = r => el("span", null, ...flags(r).flatMap((x, i) => i ? [" ", x] : [x]), r.vip ? el("div", {class: "sub"}, r.vip) : null);
+    const input = el("input", {type: "search", id: "int-q", placeholder: "Search all time: tail number, flight, owner, type, or words like Husky or Royal",
+      "aria-label": "Search all interesting flights"});
+    input.value = interestingSearch.q;
+    const vipOnly = el("input", {type: "checkbox", id: "int-vip"});
+    vipOnly.checked = interestingSearch.vip;
+    const note = el("p", {class: "note"}), box = el("div");
+    let timer = null, ask = 0;
+    async function load() {
+      const mine = ++ask;
+      const d = await api("interesting", {q: interestingSearch.q, vip: interestingSearch.vip ? "1" : ""});
+      if (mine !== ask) return;
+      note.textContent = d.searched ? `${n(d.total)} found across all time${d.total > d.flights.length ? `, newest ${d.flights.length} shown` : ""}.`
+        : `${n(d.total)} ${interestingSearch.vip ? "VIP flights" : "interesting flights"}, ${periodText()}${d.total > d.flights.length ? `, newest ${d.flights.length} shown` : ""}. Search to look across all time.`;
+      box.replaceChildren(table([{label: "When", value: r => flightLink(r.id, when(r.first_seen))}, {label: "Tail number", mono: true, value: r => planeLink(r.key)},
+        {label: "Flight", mono: true, value: r => r.callsign || "–"}, {label: "Type", value: typeCell}, {label: "Why", value: why},
+        // links to the aircraft's page, which lists every flight it has made here
+        {label: "Seen before", num: true, value: r => r.seen_before ? link(`${n(r.seen_before)}×`, "plane=" + encodeURIComponent(r.key)) : el("span", {class: "sub"}, "First time")},
+        {label: "Owner or operator", value: r => r.registrant || r.operator || "–"},
+        {label: "Closest to house", num: true, value: r => r.closest_km === null ? "–" : `${r.closest_km} km`}], d.flights, d.searched ? "Nothing matches." : "None in this period."));
+    }
+    input.addEventListener("input", () => { interestingSearch.q = input.value.trim(); clearTimeout(timer); timer = setTimeout(load, 300); });
+    vipOnly.addEventListener("change", () => { interestingSearch.vip = vipOnly.checked; load(); });
+    await load();
+    return [card("Interesting flights", "Military, government and police aircraft, VIP aircraft (the Prime Minister's and Governor General's RCAF jets, " +
+      "royal and head-of-state flights), the opt-out list, private flights, emergency squawks and go-arounds. These are never removed to save space. " +
+      "Who is aboard a VIP aircraft is never broadcast; the label says who it is used for.",
+      el("div", {class: "searchrow"}, input, el("label", null, vipOnly, " VIP aircraft only")), note, box)];
+  },
+};
+
+function parseHash() {
+  const p = new URLSearchParams(location.hash.slice(1));
+  route = Object.fromEntries(p.entries());
+  if (route.flight) route.tab = "flight"; else if (route.dest) route.tab = "dest"; else if (route.type) route.tab = "type"; else if (route.plane) route.tab = "plane"; else if (route.airline) route.tab = "airline"; else if (route.airport) route.tab = "airport";
+  if (!VIEWS[route.tab]) route.tab = "overview";
+}
+async function show() {
+  parseHash();
+  const parent = {plane: "planes", airline: "airlines", airport: "airports", type: "types", dest: "destinations"}[route.tab] || route.tab;
+  document.querySelectorAll("#tabs a").forEach(a => a.classList.toggle("on", a.dataset.tab === parent));
+  const mine = ++request;
+  afterRender = null;
+  try {
+    const parts = await VIEWS[route.tab]();
+    if (mine !== request) return;
+    $("view").replaceChildren(...parts);
+    if (afterRender) afterRender();
+  } catch (err) {
+    if (mine === request) $("view").replaceChildren(card("Couldn't load this", err.message));
+  }
+}
+
+let searchTimer;
+$("q").addEventListener("input", () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(async () => {
+    const q = $("q").value.trim();
+    if (q.length < 2) { $("results").classList.add("hide"); return; }
+    const d = await api("search", {q});
+    const items = [...d.planes.map(p => el("div", null, planeLink(p.key), el("span", {class: "sub"}, ` ${p.type_name || p.type || ""} · seen ${n(p.visits)} times`))),
+      ...d.types.map(t => el("div", null, link(t.name, "type=" + encodeURIComponent(t.key)), el("span", {class: "sub"}, ` aircraft type ${t.key}`))),
+      ...d.airlines.map(a => el("div", null, link(a.name, "airline=" + a.code), el("span", {class: "sub"}, ` airline ${a.code}`))),
+      ...d.airports.map(a => el("div", null, link(a.name, "airport=" + a.ident), el("span", {class: "sub"}, ` airport ${a.ident}`)))];
+    $("results").replaceChildren(...(items.length ? items : [el("p", {class: "empty"}, "No matches.")]));
+    $("results").classList.remove("hide");
+  }, 250);
+});
+$("results").addEventListener("click", e => { if (e.target.closest("a")) { $("results").classList.add("hide"); $("q").value = ""; } });
+["days", "radius"].forEach(id => $(id).addEventListener("change", show));
+window.addEventListener("hashchange", show);
+show();
+setInterval(() => { if (!document.hidden) show(); }, 300000);
+</script>
+</body>
+</html>

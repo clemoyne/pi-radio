@@ -1,0 +1,27 @@
+[Unit]
+Description=Pi health checks for the Status page and alert banner
+After=network-online.target
+RequiresMountsFor=/mnt/data
+StartLimitIntervalSec=0
+
+[Service]
+User=pi
+SupplementaryGroups=video adm systemd-journal
+NoNewPrivileges=yes
+ExecStart=/usr/bin/python3 -I /mnt/data/pistatus/app/pistatus.py /mnt/data/pistatus/app/config.json
+Restart=always
+RestartSec=30
+RuntimeDirectory=pistatus
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=restart
+StandardOutput=append:/mnt/data/logs/pistatus.log
+StandardError=append:/mnt/data/logs/pistatus.log
+ReadWritePaths=/mnt/data/pistatus
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+Nice=10
+CPUQuota=10%
+
+[Install]
+WantedBy=multi-user.target
