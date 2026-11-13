@@ -39,6 +39,10 @@ AIRPORT_RADIUS_KM = 400  # airports farther than this are never heard low enough
 # Takeoff: the track starts low near an airport and climbs. Landing: it ends low near one after descending.
 EVENT_AIRPORT_KM = 8
 EVENT_LOW_FT = 1500  # above the airport
+# The receiver, 15 km from Pearson, first hears most of its departures 1,500-2,000 ft up, 3-4 km out, while arrivals come
+# lower before they drop out of range; at 1,500 ft about a third of Pearson's takeoffs were missed (284 against 469
+# landings on 12 Nov). At 2,500 the two match within a few percent each day and Billy Bishop is unchanged
+EVENT_TAKEOFF_LOW_FT = 2500
 EVENT_CLIMB_FT = 1000
 EVENT_EDGE_SECONDS = 240  # how far into the start or end of a track to look
 SEGMENT_GAP_SECONDS = 120  # longer gaps aren't joined when finding the closest approach
@@ -68,6 +72,7 @@ GARAGE_COLUMNS = ["hex", "reg", "type", "category", "callsign", "operator", "grp
 AIRLINE_CALLSIGN = re.compile(r"^([A-Z]{3})\d")
 REPULL_VERSION = 1  # bump to fetch garage_pi's 30 days again and fill new columns on flights already stored
 ROUTE_LOGIC_VERSION = 3  # bump to pick every stored flight's route leg again after changing pick_leg
+EVENT_LOGIC_VERSION = 2  # bump to detect every stored track's takeoff and landing again after changing detect_events
 
 # Routes: ADS-B has no origin or destination, so they come from Virtual Radar Server's community route list (CC0),
 # one file per airline callsign prefix. Only prefixes heard in ROUTE_PREFIX_DAYS are fetched, each at most weekly.
@@ -284,13 +289,13 @@ def detect_events(points, airports):
         return []
     events = []
 
-    def low_near(point):
+    def low_near(point, limit=EVENT_LOW_FT):
         airport = airports.at(point[1], point[2])
-        return airport if airport and point[3] - airport[4] <= EVENT_LOW_FT else None
+        return airport if airport and point[3] - airport[4] <= limit else None
 
     start = [p for p in known if p[0] - known[0][0] <= EVENT_EDGE_SECONDS]
     for i, point in enumerate(start):
-        airport = low_near(point)
+        airport = low_near(point, EVENT_TAKEOFF_LOW_FT)
         if airport and max(p[3] for p in known[i:]) - point[3] >= EVENT_CLIMB_FT:
             events.append(("takeoff", airport[0], point[0]))
             break
@@ -414,10 +419,28 @@ class Store:
             with self.db:
                 self.db.execute("UPDATE flights SET route_checked = 0")
                 self.set_meta("route_logic", ROUTE_LOGIC_VERSION)
+        if self.meta("event_logic", 1) < EVENT_LOGIC_VERSION:
+            self.redetect_events()
         if self.meta("repull", 0) < REPULL_VERSION:
             with self.db:
                 self.set_meta("cursor", [0, 0])
                 self.set_meta("repull", REPULL_VERSION)
+
+    def redetect_events(self):
+        """Takeoffs and landings again for every flight that still has its track; route legs are picked again after."""
+        ids = [r[0] for r in self.db.execute("SELECT id FROM flights WHERE points > 0")]
+        with self.db:
+            for flight_id in ids:
+                points = self.db.execute("SELECT t, lat, lon, alt, gs FROM track_points WHERE flight_id = ? ORDER BY t",
+                                         (flight_id,)).fetchall()
+                if not points:
+                    continue
+                self.db.execute("DELETE FROM events WHERE flight_id = ?", (flight_id,))
+                self.db.executemany("INSERT OR IGNORE INTO events VALUES (?, ?, ?, ?)",
+                                    [(flight_id, kind, airport, t) for kind, airport, t in detect_events(points, self.airports)])
+            self.db.execute("UPDATE flights SET route_checked = 0")
+            self.set_meta("event_logic", EVENT_LOGIC_VERSION)
+        log("detected takeoffs and landings again for", len(ids), "flights")
 
     def reclassify(self):
         """Recomputes cargo and aircraft type for every flight when the rules have changed since the last start."""
