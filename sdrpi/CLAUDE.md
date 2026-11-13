@@ -2,7 +2,7 @@
 
 ## Project state (as of 12 Nov 2026)
 
-Three Pis on the home LAN, all receive-only; sdrpi is the hub. Details of each piece are in the sections below and in `../garage_pi/CLAUDE.md` and `../porch_pi/CLAUDE.md`. The three are mirrored into the GitHub repo `clemoyne/pi-radio` by `../pi-radio/sync.sh`.
+Three Pis on the home LAN, all receive-only; sdrpi is the hub. Details of each piece are in the sections below and in `../garage_pi/CLAUDE.md` and `../porch_pi/CLAUDE.md`. The three are mirrored into `../pi-radio` by its `sync.sh`; after a commit there, its `push.sh` pushes to the private `clemoyne/pi-radio-private` (full history) and replays the commits onto the public `clemoyne/pi-radio` (clean history from 12 Nov 2026), refusing if anything in its gitignored `.leakcheck` would be published.
 
 Built and running:
 - sdrpi (HackRF, USB Wi-Fi dongle, SSD):
