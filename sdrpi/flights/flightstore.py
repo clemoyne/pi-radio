@@ -61,6 +61,8 @@ DIVERSION_RETURN_S = 600  # out and back to the same airport, longer than this a
 DIVERSION_RETURN_KM = 20  # ...farther than this, is a flight that turned back
 DIVERSION_APPROACH_KM = 30  # diverted away: came this close to its usual airport...
 DIVERSION_APPROACH_FT = 8000  # ...this low, then left
+# Air ambulances fly a flight number wherever the patient is, so they never count as diverting
+DIVERSION_EXCLUDED_PREFIXES = ("PHX",)
 MAX_LIST = 200
 # What the Types pages group by: the ICAO designator, or the logged type (usually the registry model) when there isn't one
 TYPE_KEY = "COALESCE(actype, type)"
@@ -644,8 +646,9 @@ class Store:
           here: landed at an airport where this flight number, seen on other days, only ever flew over high
           away: a flight number that usually lands at an airport came down towards it, then left without landing"""
         since = int(time.time()) - DIVERSION_DAYS * 86400
-        flights = self.db.execute("""SELECT id, callsign, first_seen, last_seen, alt_min FROM flights
-                                     WHERE airline IS NOT NULL AND callsign IS NOT NULL AND first_seen >= ?""", (since,)).fetchall()
+        flights = [r for r in self.db.execute("""SELECT id, callsign, first_seen, last_seen, alt_min FROM flights
+                                                 WHERE airline IS NOT NULL AND callsign IS NOT NULL AND first_seen >= ?""", (since,))
+                   if not r[1].startswith(DIVERSION_EXCLUDED_PREFIXES)]
         events = collections.defaultdict(list)
         for flight_id, kind, airport, t in self.db.execute(
                 "SELECT e.flight_id, e.kind, e.airport, e.t FROM events e JOIN flights f ON f.id = e.flight_id "
