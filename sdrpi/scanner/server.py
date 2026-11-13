@@ -536,6 +536,8 @@ class Listener(threading.Thread):
 
     def stop(self):
         self.stopped.set()
+        if self.proc and self.proc.poll() is None:
+            self.proc.terminate()
         self.join(timeout=5)
 
 
@@ -743,47 +745,57 @@ class ContinuousJob:
 
     async def run(self):
         loop = asyncio.get_running_loop()
-        while True:
-            item = await self.queue.get()
-            if self.deadline and time.monotonic() >= self.deadline:
-                await self.finish("window")
-                return
-            if not isinstance(item, bytes):
-                if "error" in item:
-                    await self.finish("error")
+        try:
+            while True:
+                item = await self.queue.get()
+                if self.deadline and time.monotonic() >= self.deadline:
+                    await self.finish("window")
                     return
-                await self.broadcast("send_json", item)
-                continue
-            snr, _, is_open = struct.unpack("<ffI", item[:12])
-            if self.gate:
-                kept = self.gate.feed(snr, is_open, np.frombuffer(item[12:], dtype=np.int16).copy())
-            else:
-                kept = [np.frombuffer(item[12:], dtype=np.int16)] if is_open else []
-            if is_open:
-                self.peak = max(self.peak, snr)
-            for audio in kept:
-                await loop.run_in_executor(None, self.writer.writeframes, audio.tobytes())
-                self.bytes += audio.size * 2
-                if self.kind == "goaround":
-                    self.snrs.append((snr, audio.size))
-            if self.bytes >= CONTINUOUS_LIMIT_BYTES:
-                await self.finish("capped")
-                return
-            if kept:
-                if time.monotonic() - self.last_sync >= CONTINUOUS_SYNC_S:
-                    self.last_sync = time.monotonic()
-                    self.sync()
-                    if shutil.disk_usage(DATA).free < CONTINUOUS_MIN_FREE_BYTES:
-                        await self.finish("disk")
+                if not isinstance(item, bytes):
+                    if "error" in item:
+                        await self.finish("error")
                         return
-            await self.broadcast("send_bytes", item)
+                    await self.broadcast("send_json", item)
+                    continue
+                snr, _, is_open = struct.unpack("<ffI", item[:12])
+                if self.gate:
+                    kept = self.gate.feed(snr, is_open, np.frombuffer(item[12:], dtype=np.int16).copy())
+                else:
+                    kept = [np.frombuffer(item[12:], dtype=np.int16)] if is_open else []
+                if is_open:
+                    self.peak = max(self.peak, snr)
+                for audio in kept:
+                    await loop.run_in_executor(None, self.writer.writeframes, audio.tobytes())
+                    self.bytes += audio.size * 2
+                    if self.kind == "goaround":
+                        self.snrs.append((snr, audio.size))
+                if self.bytes >= CONTINUOUS_LIMIT_BYTES:
+                    await self.finish("capped")
+                    return
+                if kept:
+                    if time.monotonic() - self.last_sync >= CONTINUOUS_SYNC_S:
+                        self.last_sync = time.monotonic()
+                        self.sync()
+                        if shutil.disk_usage(DATA).free < CONTINUOUS_MIN_FREE_BYTES:
+                            await self.finish("disk")
+                            return
+                await self.broadcast("send_bytes", item)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            traceback.print_exc()
+            await self.finish("error")
 
     async def finish(self, reason):
         if self.finished:
             return
         self.finished = True
-        if self.task is not asyncio.current_task():
+        if self.task and self.task is not asyncio.current_task():
             self.task.cancel()
+            try:
+                await self.task
+            except asyncio.CancelledError:
+                pass
         loop = asyncio.get_running_loop()
         for audio in self.gate.flush() if self.gate else []:
             await loop.run_in_executor(None, self.writer.writeframes, audio.tobytes())
@@ -851,7 +863,7 @@ class AcarsJob:
         self.freqs = VDL2_FREQS if self.vdl2 else ACARS_FREQS
         self.title = "ACARS mode (VDL2)" if self.vdl2 else "ACARS mode"
         self.channel = {"id": "acars", "mhz": float(self.freqs[0]), "name": "ACARS"}
-        self.count, self.proc, self.task, self.finished = 0, None, None, False
+        self.count, self.proc, self.task, self.drain_task, self.finished = 0, None, None, None, False
         self.subscribers = set()
         self.db = acars_db()
         self.errors = collections.deque(maxlen=6)
@@ -929,22 +941,28 @@ class AcarsJob:
                    "--output", "decoded:json:file:path=-", *[str(int(float(f) * 1e6)) for f in VDL2_FREQS]]
         else:
             cmd = [str(ACARSDEC), "-o", "4", "-g", str(ACARS_GAIN), "-d", "driver=hackrf", *ACARS_FREQS]
-        self.proc = await asyncio.create_subprocess_exec(*cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        asyncio.create_task(self.drain())
-        print(time.strftime("%F %T"), self.title, "started until", time.strftime("%F %T", time.localtime(self.until)), flush=True)
-        while True:
-            remaining = self.until - time.time()
-            if remaining <= 0:
-                await self.finish("window")
-                return
-            try:
-                line = await asyncio.wait_for(self.proc.stdout.readline(), timeout=min(remaining, 5))
-            except asyncio.TimeoutError:
-                continue
-            if not line:
-                await self.finish("error")
-                return
-            self.store(line)
+        try:
+            self.proc = await asyncio.create_subprocess_exec(*cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            self.drain_task = asyncio.create_task(self.drain())
+            print(time.strftime("%F %T"), self.title, "started until", time.strftime("%F %T", time.localtime(self.until)), flush=True)
+            while True:
+                remaining = self.until - time.time()
+                if remaining <= 0:
+                    await self.finish("window")
+                    return
+                try:
+                    line = await asyncio.wait_for(self.proc.stdout.readline(), timeout=min(remaining, 5))
+                except asyncio.TimeoutError:
+                    continue
+                if not line:
+                    await self.finish("error")
+                    return
+                self.store(line)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            traceback.print_exc()
+            await self.finish("error")
 
     async def finish(self, reason, resume=True):
         """resume=False when something else is taking the radio straight away, so the band monitor stays off."""
@@ -953,6 +971,8 @@ class AcarsJob:
         self.finished = True
         if self.task and self.task is not asyncio.current_task():
             self.task.cancel()
+        if self.drain_task:
+            self.drain_task.cancel()
         if self.proc and self.proc.returncode is None:
             self.proc.terminate()
             try:
@@ -1114,6 +1134,8 @@ class CollectJob:
             return
         self.finished = True
         self.stopped.set()
+        if self.proc and self.proc.poll() is None:
+            self.proc.terminate()
         if self.thread:
             await asyncio.get_running_loop().run_in_executor(None, self.thread.join, 5)
         radio = self.radio
@@ -1534,7 +1556,13 @@ class Radio:
         proc = await asyncio.create_subprocess_exec(
             "hackrf_spiflash", "-R", stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
-        await asyncio.wait_for(proc.wait(), 15)
+        try:
+            await asyncio.wait_for(proc.wait(), 15)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            if proc.returncode is None:
+                proc.kill()
+                await proc.wait()
+            raise
         print(time.strftime("%F %T"), "hackrf reset, exit", proc.returncode, flush=True)
         await asyncio.sleep(4)
 
@@ -1553,7 +1581,7 @@ class Radio:
                 await self.proc.wait()
 
     async def start_monitor(self):
-        if not self.monitor_task:
+        if not self.monitor_task and not self.job and not self.listening and not self.capturing:
             self.monitor_task = asyncio.create_task(self.monitor())
 
     async def stop_monitor(self):
@@ -1744,6 +1772,12 @@ async def listen_socket(request):
     channel = BY_ID.get(request.query.get("id", ""))
     if not channel or not channel["listen"]:
         raise web.HTTPBadRequest(text="unknown or non-listenable channel")
+    try:
+        initial_squelch = float(request.query.get("squelch", 8))
+    except (ValueError, TypeError):
+        raise web.HTTPBadRequest(text="invalid squelch")
+    if not math.isfinite(initial_squelch):
+        raise web.HTTPBadRequest(text="invalid squelch")
     radio = request.app["radio"]
     ws = web.WebSocketResponse(heartbeat=30)
     await ws.prepare(request)
@@ -1761,8 +1795,13 @@ async def listen_socket(request):
         job.subscribers.add(ws)
         try:
             async for msg in ws:
-                if msg.type == WSMsgType.TEXT and json.loads(msg.data).get("continuous") is False:
-                    await job.finish("stopped")
+                if msg.type == WSMsgType.TEXT:
+                    try:
+                        command = json.loads(msg.data)
+                    except ValueError:
+                        continue
+                    if isinstance(command, dict) and command.get("continuous") is False:
+                        await job.finish("stopped")
         finally:
             job.subscribers.discard(ws)
         return ws
@@ -1780,7 +1819,7 @@ async def listen_socket(request):
         loop = asyncio.get_running_loop()
         queue = asyncio.Queue()
         listener = Listener(channel, request.query.get("gain", "normal"), loop, queue)
-        listener.squelch = float(request.query.get("squelch", 8))
+        listener.squelch = initial_squelch
         done = asyncio.Event()
 
         async def cancel(message=None):
@@ -1844,10 +1883,25 @@ async def listen_socket(request):
     try:
         async for msg in ws:
             if msg.type == WSMsgType.TEXT:
-                command = json.loads(msg.data)
-                listener.squelch = float(command.get("squelch", listener.squelch))
+                try:
+                    command = json.loads(msg.data)
+                except ValueError:
+                    continue
+                if not isinstance(command, dict):
+                    continue
+                if "squelch" in command:
+                    try:
+                        squelch = float(command["squelch"])
+                    except (ValueError, TypeError):
+                        continue
+                    if math.isfinite(squelch):
+                        listener.squelch = squelch
                 if command.get("continuous") is True and job is None:
                     sender.cancel()
+                    try:
+                        await sender
+                    except asyncio.CancelledError:
+                        pass
                     if take["pcm"] is not None:
                         await ws.send_json(await finish_take())
                     job = radio.job = ContinuousJob(radio, channel, listener, queue, new_gate(command))
@@ -1893,7 +1947,7 @@ async def clip_delete(request):
     if not CLIP_NAME.match(name):
         raise web.HTTPBadRequest()
     job = request.app["radio"].job
-    if job and job.name == name:
+    if job and getattr(job, "name", None) == name:
         raise web.HTTPConflict(text="stop the continuous recording first")
     request.app["radio"].clips.remove(name)
     return web.json_response({"ok": True})
@@ -1904,6 +1958,8 @@ async def goaround_trigger(request):
         body = await request.json()
     except ValueError:
         raise web.HTTPBadRequest()
+    if not isinstance(body, dict):
+        raise web.HTTPBadRequest()
     callsign = re.sub(r"[^A-Z0-9-]", "", str(body.get("callsign") or "").upper())[:10] or "unknown"
     return web.json_response(await request.app["radio"].start_goaround(str(body.get("airport", "")), callsign))
 
@@ -1912,11 +1968,16 @@ async def collect_start(request):
     """{"plan": [{"group": "railway", "from": unix, "to": unix}, ...]}: which group to collect in each time slot.
     A group that meets its goal hands the rest of its slot to any group still short of its own."""
     try:
-        plan = [{"group": str(s["group"]), "from": float(s["from"]), "to": float(s["to"])} for s in (await request.json())["plan"]]
+        body = await request.json()
+        if not isinstance(body, dict):
+            raise ValueError("expected object")
+        plan = [{"group": str(s["group"]), "from": float(s["from"]), "to": float(s["to"])} for s in body["plan"]]
     except (ValueError, TypeError, KeyError, AttributeError):
         raise web.HTTPBadRequest(text="needs a plan of {group, from, to}")
-    start, until = min((s["from"] for s in plan), default=0), max((s["to"] for s in plan), default=0)
-    if (not plan or any(s["group"] not in COLLECTIONS or s["from"] >= s["to"] for s in plan)
+    if not plan or any(not (math.isfinite(s["from"]) and math.isfinite(s["to"])) for s in plan):
+        raise web.HTTPBadRequest(text="needs a plan of {group, from, to}")
+    start, until = min(s["from"] for s in plan), max(s["to"] for s in plan)
+    if (any(s["group"] not in COLLECTIONS or s["from"] >= s["to"] for s in plan)
             or until <= time.time() or until - start > 24 * 3600):
         raise web.HTTPBadRequest(text="groups must be among %s, and the plan in the future and under 24 hours" % ", ".join(COLLECTIONS))
     radio = request.app["radio"]
@@ -1980,6 +2041,8 @@ async def acars_settings(request):
         try:
             body = await request.json()
         except ValueError:
+            raise web.HTTPBadRequest()
+        if not isinstance(body, dict):
             raise web.HTTPBadRequest()
         radio.settings.update({k: bool(v) for k, v in body.items() if k in DEFAULT_SETTINGS})
         radio.save_settings()
@@ -2275,8 +2338,14 @@ async def continuous_dismiss(request):
 
 
 async def capture_toggle(request):
+    try:
+        body = await request.json()
+    except ValueError:
+        raise web.HTTPBadRequest()
+    if not isinstance(body, dict):
+        raise web.HTTPBadRequest()
     clips = request.app["radio"].clips
-    clips.enabled = bool((await request.json()).get("on"))
+    clips.enabled = bool(body.get("on"))
     clips.persist()
     return web.json_response({"on": clips.enabled})
 
@@ -2301,6 +2370,7 @@ async def on_stop(app):
         await app["radio"].job.finish("shutdown")
     app["radio"].saver.cancel()
     app["radio"].hunter_task.cancel()
+    app["radio"].emergency_task.cancel()
     app["radio"].collect_task.cancel()
     app["power"].task.cancel()
     app["radio"].preempt.set()

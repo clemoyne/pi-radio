@@ -302,7 +302,7 @@ def wait_for_clock():
 
 
 def connect():
-    db = sqlite3.connect(STATE_DB, timeout=10)
+    db = sqlite3.connect(STATE_DB, timeout=10, isolation_level="IMMEDIATE")
     db.execute("PRAGMA synchronous = NORMAL")
     return db
 
@@ -376,12 +376,12 @@ class ApiHandler(http.server.BaseHTTPRequestHandler):
     def respond_export(self, query):
         """Finished visits with their tracks, oldest first, for sdrpi's long-term store. A visit is finished once it
         has gone unheard for VISIT_GAP_SECONDS, so its row no longer changes. The cursor is (last_seen, id)."""
-        def number(name):
-            value = query.get(name, ["0"])[0]
-            return int(value) if value.isdigit() else 0
+        def number(name, default=0):
+            value = query.get(name, [None])[0]
+            return int(value) if value is not None and value.isdigit() else default
         cutoff = int(time.time()) - VISIT_GAP_SECONDS
         after, after_id = number("after"), number("after_id")
-        limit = min(max(number("limit"), 1), MAX_EXPORT_VISITS)
+        limit = min(max(number("limit", MAX_EXPORT_VISITS), 1), MAX_EXPORT_VISITS)
         rows = self.db.execute("""SELECT %s FROM visits WHERE last_seen <= ? AND (last_seen > ? OR (last_seen = ? AND id > ?))
                                   ORDER BY last_seen, id LIMIT ?""" % ", ".join(VISIT_COLUMNS),
                                (cutoff, after, after, after_id, limit)).fetchall()
@@ -471,7 +471,11 @@ class ApiHandler(http.server.BaseHTTPRequestHandler):
         if self.headers.get("Content-Type", "").split(";")[0].strip() != "application/json":
             self.respond(415, {"error": "JSON required"})
             return
-        length = int(self.headers.get("Content-Length") or 0)
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            self.respond(400, {"error": "Invalid Content-Length"})
+            return
         if length <= 0 or length > MAX_BODY_BYTES:
             self.respond(413, {"error": "Request too large"})
             return
@@ -616,17 +620,23 @@ class AircraftLog:
                     self.db.execute("UPDATE visits SET %s WHERE id = ?" % ", ".join(c + " = ?" for c in updates),
                                     [visit[c] for c in updates] + [visit["id"]])
 
-    def check_go_around(self, visit, live=False):
+    def check_go_around(self, visit, live=False, visit_id=None):
         if visit["go_around"] or not is_airliner(visit) or visit["alt_min"] is None:
             return
         if visit["alt_min"] > GO_AROUND_MIN_CHECK_FT:
             return
-        points = self.db.execute("SELECT t, lat, lon, alt, gs FROM track_points WHERE visit_id = ? ORDER BY t",
-                                 (visit["id"],)).fetchall()
-        found = detect_go_around(points + visit.get("track", []), self.airports)
+        vid = visit_id if visit_id is not None else visit["id"]
+        points = (self.db.execute("SELECT t, lat, lon, alt, gs FROM track_points WHERE visit_id = ? ORDER BY t",
+                                  (vid,)).fetchall() if vid is not None else [])
+        # Right after a write the unsaved track is also in the table, so drop the repeats
+        all_points = sorted(set(points) | set(visit.get("track", [])), key=lambda p: p[0])
+        found = detect_go_around(all_points, self.airports)
         if found:
             visit["go_around"], visit["go_around_at"] = found
-            self.db.execute("UPDATE visits SET go_around = ?, go_around_at = ? WHERE id = ?", found + (visit["id"],))
+            if vid is not None:
+                self.db.execute("UPDATE visits SET go_around = ?, go_around_at = ? WHERE id = ?", found + (vid,))
+            else:
+                visit["dirty"] = True
             if live and time.time() - found[1] <= GO_AROUND_NOTIFY_MAX_AGE_SECONDS:
                 notify_go_around(found[0], visit["callsign"])
 
@@ -734,12 +744,12 @@ class AircraftLog:
         if isinstance(altitude, (int, float)):
             visit["alt_min"] = altitude if visit["alt_min"] is None else min(visit["alt_min"], altitude)
             visit["alt_max"] = altitude if visit["alt_max"] is None else max(visit["alt_max"], altitude)
-        if self.receiver and "lat" in aircraft and aircraft.get("seen_pos", 999) <= POLL_SECONDS * 2:
-            distance = distance_km(self.receiver[0], self.receiver[1], aircraft["lat"], aircraft["lon"])
-            if visit["min_dist_km"] is None or distance < visit["min_dist_km"]:
-                visit["min_dist_km"] = round(distance, 1)
-                visit["closest_at"] = now
-        if "lat" in aircraft and aircraft.get("seen_pos", 999) <= POLL_SECONDS * 2:
+        if "lat" in aircraft and "lon" in aircraft and aircraft.get("seen_pos", 999) <= POLL_SECONDS * 2:
+            if self.receiver:
+                distance = distance_km(self.receiver[0], self.receiver[1], aircraft["lat"], aircraft["lon"])
+                if visit["min_dist_km"] is None or distance < visit["min_dist_km"]:
+                    visit["min_dist_km"] = round(distance, 1)
+                    visit["closest_at"] = now
             self.add_track_point(visit, aircraft, now)
         visit["dirty"] = True
 
@@ -765,21 +775,21 @@ class AircraftLog:
             self.update_visit(visit, aircraft, callsign, now)
 
     def write_visit(self, visit):
-        visit["track_points"] += len(visit["track"])
         visit["private"] = is_private(visit)
         columns = [c for c in VISIT_COLUMNS if c != "id"]
         values = [visit[c] for c in columns]
-        if visit["id"] is None:
+        track = visit["track"]
+        visit_id = visit["id"]
+        if visit_id is None:
             cursor = self.db.execute("INSERT INTO visits (reg_norm, %s) VALUES (?, %s)" % (
                 ", ".join(columns), ", ".join("?" * len(columns))), [normalize_reg(visit["reg"])] + values)
-            visit["id"] = cursor.lastrowid
+            visit_id = cursor.lastrowid
         else:
             self.db.execute("UPDATE visits SET reg_norm = ?, %s WHERE id = ?" % ", ".join(c + " = ?" for c in columns),
-                            [normalize_reg(visit["reg"])] + values + [visit["id"]])
+                            [normalize_reg(visit["reg"])] + values + [visit_id])
         self.db.executemany("INSERT OR IGNORE INTO track_points VALUES (?, ?, ?, ?, ?, ?)",
-                            [(visit["id"],) + point for point in visit["track"]])
-        visit["track"] = []
-        visit["dirty"] = False
+                            [(visit_id,) + point for point in track])
+        return visit, visit_id, len(track)
 
     def load_receiver(self):
         try:
@@ -791,11 +801,18 @@ class AircraftLog:
 
     def flush(self, now):
         expired = [hexid for hexid, v in self.live.items() if now - v["last_seen"] > VISIT_GAP_SECONDS]
+        written = []
         with self.db:
             for visit in self.finished + list(self.live.values()):
                 if visit["dirty"]:
-                    self.write_visit(visit)
-                    self.check_go_around(visit, live=True)
+                    visit, visit_id, added_points = self.write_visit(visit)
+                    written.append((visit, visit_id, added_points))
+                    self.check_go_around(visit, live=True, visit_id=visit_id)
+        for visit, visit_id, added_points in written:
+            visit["id"] = visit_id
+            visit["track_points"] += added_points
+            visit["track"] = []
+            visit["dirty"] = False
         self.finished = []
         for hexid in expired:
             del self.live[hexid]
@@ -888,16 +905,25 @@ class AircraftLog:
             if now >= next_poll:
                 next_poll = now + POLL_SECONDS
                 self.poll(int(now))
-                self.watch_approaches()
+                try:
+                    self.watch_approaches()
+                except sqlite3.Error as err:
+                    print("watch_approaches error:", err, file=sys.stderr, flush=True)
             if now >= next_flush or self.wake.is_set():
                 self.wake.clear()
                 next_flush = now + FLUSH_SECONDS
                 self.load_receiver()
-                self.flush(int(now))
-                self.write_json(int(now))
+                try:
+                    self.flush(int(now))
+                    self.write_json(int(now))
+                except (sqlite3.Error, OSError) as err:
+                    print("flush error:", err, file=sys.stderr, flush=True)
             if now >= next_prune:
                 next_prune = now + PRUNE_SECONDS
-                self.prune(int(now))
+                try:
+                    self.prune(int(now))
+                except sqlite3.Error as err:
+                    print("prune error:", err, file=sys.stderr, flush=True)
         self.flush(int(time.time()))
 
 
