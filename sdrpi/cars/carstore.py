@@ -471,12 +471,13 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
         elif path == "/weather/":
             self.send(200, (APP / "www" / "weather.html").read_bytes(), "text/html; charset=utf-8")
-        elif path in ("/weather/api/status", "/weather/api/hourly", "/weather/api/daily"):
+        elif path in ("/weather/api/status", "/weather/api/hourly", "/weather/api/daily", "/weather/api/readings"):
             query = urllib.parse.parse_qs(self.path.partition("?")[2])
             days = query.get("days", ["2"])[0]
             days = int(days) if days.isdigit() else 2
             station = self.tracker.weather
-            result = {"status": station.status, "hourly": lambda: station.hourly(days), "daily": lambda: station.daily(days)}[path.rsplit("/", 1)[1]]()
+            result = {"status": station.status, "hourly": lambda: station.hourly(days), "daily": lambda: station.daily(days),
+                      "readings": lambda: station.readings(days)}[path.rsplit("/", 1)[1]]()
             if path.endswith("/status"):  # when porch_pi next listens for the stations, and last searched for new ones
                 porch = self.tracker.porch
                 result["schedule"] = {"band": self.tracker.band, "doing": porch.get("doing"), "next_check": porch.get("next_weather_check"),

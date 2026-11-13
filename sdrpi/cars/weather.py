@@ -1,8 +1,8 @@
 """Weather from the wireless outdoor sensors and weather stations porch_pi hears. The car store hands over every non-TPMS
 message that carries a weather measurement (temperature, humidity, wind, rain, pressure, UV or light), so any station in
 range is found on its own: each one becomes a row in `sensors`, and the page lists them under Stations, where they can be
-named and one picked as the dashboard's main station. Every reading is kept, with the raw message; the page reads hourly
-and daily summaries. Served by the car store at /weather/. The dashboard's name is a setting, not part of the code."""
+named and one picked as the dashboard's main station. Every reading is kept, with the raw message; the page charts every
+reading and lists daily summaries. Served by the car store at /weather/. The dashboard's name is a setting, not part of the code."""
 import json
 import math
 import os
@@ -214,6 +214,15 @@ class Weather:
                                       GROUP BY hour ORDER BY hour""", (sensor, time.time() - days * 86400)).fetchall()
         return {"sensor": sensor, "hours": [{"t": h, "min": r1(lo), "avg": r1(avg), "max": r1(hi), "humidity": r1(hum), "n": n}
                                             for h, lo, avg, hi, hum, n in rows]}
+
+    def readings(self, days):
+        """Every reading of the main station in the period, oldest first, as [time, temperature °C, humidity %]."""
+        days = max(1, min(MAX_DAYS, days))
+        with self.lock:
+            sensor = self.main_sensor()
+            rows = self.db.execute("SELECT t, temp_c, humidity FROM readings WHERE sensor = ? AND t >= ? ORDER BY t",
+                                   (sensor, time.time() - days * 86400)).fetchall()
+        return {"sensor": sensor, "readings": [[t, r1(temp), r1(hum)] for t, temp, hum in rows]}
 
     def daily(self, days):
         """Per local day: low and high temperature, average humidity, for the main station."""

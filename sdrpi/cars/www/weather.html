@@ -18,7 +18,7 @@ h1{font-size:22px;margin:0}
 .seg button+button{border-left:1px solid var(--line)}
 .seg button.on{background:var(--temp);color:#fff}
 .seg button:focus-visible{outline:2px solid var(--hum);outline-offset:-2px}
-main{max-width:1100px;margin:0 auto;padding:0 16px 32px;display:grid;gap:14px}
+main{max-width:1100px;margin:0 auto;padding:0 16px 32px;display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px}
 .tile,.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;min-width:0}
 .tile .n{font-size:30px;font-weight:650;font-variant-numeric:tabular-nums}
@@ -65,7 +65,6 @@ tr.waiting td{color:var(--dim)}
   </div>
   <section class="card">
     <h2>Temperature</h2><p class="note" id="temp-note"></p>
-    <div class="legend"><span><i style="background:var(--temp)"></i>Average</span><span><i style="background:var(--temp-band)"></i>Low to high</span></div>
     <svg id="temp-chart" height="240" role="img" aria-label="Temperature over time"></svg>
   </section>
   <section class="card">
@@ -108,11 +107,11 @@ try { const saved = Number(localStorage.getItem("weather-days")); if ([2, 7, 30,
 function tip(e, text) { const t = $("tip"); t.textContent = text; t.style.display = "block"; t.style.left = Math.min(e.clientX + 12, innerWidth - t.offsetWidth - 8) + "px"; t.style.top = (e.clientY - t.offsetHeight - 10) + "px"; }
 function hideTip() { $("tip").style.display = "none"; }
 
-// One line with an optional low-high band, gaps wherever a slot has no data; crosshair and tooltip on hover
+// A line through the points with a dot on each, broken wherever a point has no value; crosshair and tooltip on hover
 function lineChart(svg, points, opts) {
   svg.replaceChildren();
   const W = svg.clientWidth || 700, H = +svg.getAttribute("height"), L = 38, R = 8, T = 8, B = 22;
-  const vals = points.flatMap(p => [p.lo, p.hi, p.v]).filter(v => v !== null && v !== undefined);
+  const vals = points.map(p => p.v).filter(v => v !== null && v !== undefined);
   if (!vals.length) { const t = sv("text", {x: L, y: H / 2}); t.textContent = "No readings yet in this period."; svg.append(t); return; }
   let lo = Math.min(...vals), hi = Math.max(...vals);
   if (opts.min !== undefined) lo = Math.min(lo, opts.min);
@@ -130,28 +129,28 @@ function lineChart(svg, points, opts) {
   const labels = Math.max(2, Math.floor((W - L) / 110));
   for (let i = 0; i <= labels; i++) {
     const t = t0 + (t1 - t0) * i / labels, text = sv("text", {x: x(t), y: H - 5, "text-anchor": i === 0 ? "start" : i === labels ? "end" : "middle"});
-    text.textContent = opts.daily || t1 - t0 > 3 * 86400 ? dayName(t) : hm(t); svg.append(text);
+    text.textContent = t1 - t0 > 3 * 86400 ? dayName(t) : hm(t); svg.append(text);
   }
   // runs of consecutive points with data
   const runs = []; let run = [];
   for (const p of points) { if (p.v === null || p.v === undefined) { if (run.length) runs.push(run); run = []; } else run.push(p); }
   if (run.length) runs.push(run);
   for (const r of runs) {
-    if (opts.band && r.length > 1) {
-      const top = r.map(p => `${x(p.t)},${y(p.hi)}`), bottom = r.slice().reverse().map(p => `${x(p.t)},${y(p.lo)}`);
-      svg.append(sv("polygon", {points: [...top, ...bottom].join(" "), fill: opts.band}));
-    }
-    if (r.length === 1) svg.append(sv("circle", {cx: x(r[0].t), cy: y(r[0].v), r: 3, fill: opts.color}));
-    else svg.append(sv("polyline", {points: r.map(p => `${x(p.t)},${y(p.v)}`).join(" "), fill: "none", stroke: opts.color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round"}));
+    if (r.length > 1) svg.append(sv("polyline", {points: r.map(p => `${x(p.t)},${y(p.v)}`).join(" "), fill: "none", stroke: opts.color, "stroke-width": 1.5, "stroke-linejoin": "round", "stroke-opacity": 0.6}));
   }
+  // Every reading as a dot, all in one path so a year of readings stays quick to draw; smaller when they crowd together
+  const withData = points.filter(p => p.v !== null && p.v !== undefined);
+  const size = withData.length > (W - L - R) / 2 ? 2 : 4;
+  svg.append(sv("path", {d: withData.map(p => `M${x(p.t).toFixed(1)} ${y(p.v).toFixed(1)}h0`).join(""), stroke: opts.color, "stroke-width": size, "stroke-linecap": "round"}));
   const cross = sv("line", {y1: T, y2: H - B, stroke: "var(--dim)", "stroke-width": 1, visibility: "hidden"});
   const dot = sv("circle", {r: 4, fill: opts.color, stroke: "var(--card)", "stroke-width": 2, visibility: "hidden"});
   const hit = sv("rect", {x: L, y: T, width: W - L - R, height: H - T - B, fill: "transparent"});
   svg.append(cross, dot, hit);
-  const withData = points.filter(p => p.v !== null && p.v !== undefined);
   const move = e => {
     const box = svg.getBoundingClientRect(), t = t0 + (e.clientX - box.left - L) / (W - L - R) * (t1 - t0);
-    const p = withData.reduce((a, b) => Math.abs(b.t - t) < Math.abs(a.t - t) ? b : a);
+    let a = 0, b = withData.length - 1;  // nearest reading in time
+    while (b - a > 1) { const m = (a + b) >> 1; if (withData[m].t < t) a = m; else b = m; }
+    const p = Math.abs(withData[a].t - t) <= Math.abs(withData[b].t - t) ? withData[a] : withData[b];
     cross.setAttribute("x1", x(p.t)); cross.setAttribute("x2", x(p.t)); cross.setAttribute("visibility", "visible");
     dot.setAttribute("cx", x(p.t)); dot.setAttribute("cy", y(p.v)); dot.setAttribute("visibility", "visible");
     tip(e, opts.tip(p));
@@ -161,21 +160,19 @@ function lineChart(svg, points, opts) {
   hit.addEventListener("pointerleave", () => { cross.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); hideTip(); });
 }
 
-// Hourly points for short periods, daily for long ones; every slot is present so missing ones show as gaps
-function slots(rows, daily) {
-  if (!rows.length) return [];
-  const stepS = daily ? 86400 : 3600, byT = new Map(rows.map(r => [r.t, r]));
+// Every reading, with a break in the line wherever none came for longer than a missed check or two
+const GAP_S = 45 * 60;
+function withGaps(rows, pick) {
   const out = [];
-  for (let t = rows[0].t; t <= rows[rows.length - 1].t; t += stepS) out.push(byT.get(t) || {t});
+  rows.forEach((r, i) => { if (i && r[0] - rows[i - 1][0] > GAP_S) out.push({t: rows[i - 1][0] + 1}); out.push({t: r[0], v: pick(r)}); });
   return out;
 }
 
 async function refresh() {
-  const daily = days > 7;
   let s, series;
   try {
     [s, series] = await Promise.all([fetch("api/status", {cache: "no-store"}).then(r => r.json()),
-      fetch(`api/${daily ? "daily" : "hourly"}?days=${days}`, {cache: "no-store"}).then(r => r.json())]);
+      fetch(`api/readings?days=${days}`, {cache: "no-store"}).then(r => r.json())]);
   } catch (e) { $("station").textContent = "Can't reach the weather store on sdrpi."; return; }
   const c = s.current, main = s.stations.find(x => x.sensor === s.sensor);
   $("title").textContent = s.title;
@@ -193,15 +190,15 @@ async function refresh() {
   $("t-batt").textContent = !c || c.battery_ok === null ? "–" : c.battery_ok ? "OK" : "Low";
   $("t-batt").className = "n" + (c && c.battery_ok === 0 ? " bad" : "");
 
-  const rows = daily ? series.days.map(r => ({...r, t: new Date(r.day + "T12:00").getTime() / 1000})) : series.hours;
-  const filled = slots(rows, daily);
+  const rows = series.readings;
   const period = {2: "last 48 hours", 7: "last 7 days", 30: "last 30 days", 365: "last year"}[days];
-  $("temp-note").textContent = `${daily ? "Daily" : "Hourly"} average, with the lowest and highest reading in each ${daily ? "day" : "hour"}, ${period}. Gaps are ${daily ? "days" : "hours"} with no readings.`;
-  $("hum-note").textContent = `${daily ? "Daily" : "Hourly"} average relative humidity, ${period}.`;
-  lineChart($("temp-chart"), filled.map(p => ({t: p.t, v: conv(p.avg), lo: conv(p.min), hi: conv(p.max)})), {color: "var(--temp)", band: "var(--temp-band)", unit: "°", freezing: conv(0),
-    daily, tip: p => `${daily ? dayName(p.t) : `${dayName(p.t)} ${hm(p.t)}`}\n${one(p.v)} ${U()} average\n${one(p.lo)} to ${one(p.hi)} ${U()}`});
-  lineChart($("hum-chart"), filled.map(p => ({t: p.t, v: p.humidity})), {color: "var(--hum)", unit: "%", min: 0, max: 100, daily,
-    tip: p => `${daily ? dayName(p.t) : `${dayName(p.t)} ${hm(p.t)}`}\n${Math.round(p.v)}% humidity`});
+  const count = `${rows.length.toLocaleString()} reading${rows.length === 1 ? "" : "s"}`;
+  $("temp-note").textContent = `Every reading, ${period} (${count}). The line breaks where none came for over ${GAP_S / 60} minutes.`;
+  $("hum-note").textContent = `Every reading of relative humidity, ${period}.`;
+  lineChart($("temp-chart"), withGaps(rows, r => conv(r[1])), {color: "var(--temp)", unit: "°", freezing: conv(0),
+    tip: p => `${dayName(p.t)} ${hm(p.t)}\n${one(p.v)} ${U()}`});
+  lineChart($("hum-chart"), withGaps(rows, r => r[2]), {color: "var(--hum)", unit: "%", min: 0, max: 100,
+    tip: p => `${dayName(p.t)} ${hm(p.t)}\n${Math.round(p.v)}% humidity`});
 
   const table = await fetch(`api/daily?days=${Math.max(days, 30)}`, {cache: "no-store"}).then(r => r.json());
   const head = el("tr", null, ...["Day", "Low", "High", "Average", "Humidity", "Readings"].map((h, i) => el("th", i ? {class: "num"} : null, h)));
