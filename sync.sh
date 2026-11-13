@@ -1,7 +1,7 @@
 #!/bin/sh
 # Copies the committed files of the working repositories (../sdrpi, ../garage_pi and ../porch_pi) into this one.
 # Only committed files come across, so local.json, CLAUDE.local.md and anything else ignored stays behind.
-# Review with `git status`, then commit and push.
+# Review with `git status`, commit, then run ./push.sh to update both the private and public repositories.
 set -eu
 cd "$(dirname "$0")"
 for project in sdrpi garage_pi porch_pi; do
