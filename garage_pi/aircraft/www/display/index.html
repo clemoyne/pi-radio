@@ -249,13 +249,12 @@ function tempText() {
   if (!settings.temp || tempC == null) return "";
   return Math.round(settings.tempUnit === "F" ? tempC * 9 / 5 + 32 : tempC) + "°" + settings.tempUnit;
 }
-// Clock and temperature at the bottom right; returns how wide it is, so the bottom line can stop short of it
-function corner(withClock) {
-  const str = [withClock && settings.clock !== "off" ? clockText() : "", tempText()].filter(Boolean).join("  ");
-  if (!str) return 0;
-  const t = THEMES[settings.theme] || THEMES.classic, w = miniWidth(str);
-  mini(str, W - w, 54, t.metric);
-  return w + 3;
+// Temperature beside the upper bottom row and the time beside the lower one, right-aligned, each centred on the
+// 7-dot capitals of its row (rows start at y). Returns how much of each row they take, so the text there stops short.
+function corner(topY, bottomY, withClock) {
+  const t = THEMES[settings.theme] || THEMES.classic;
+  const place = (str, y) => { if (!str) return 0; const w = miniWidth(str); mini(str, W - w, y + 1, t.metric); return w + 3; };
+  return [place(tempText(), topY), place(withClock && settings.clock !== "off" ? clockText() : "", bottomY)];
 }
 const ALERT = [255, 40, 30];  // red whatever the colour scheme
 
@@ -548,14 +547,14 @@ function flightScreen(a, now) {
   line(second, right, 13, emergency ? t.alert : t.main, width, now);
   line(kind, right, 24, t.main, width, now);
 
-  const reserved = corner(true);
+  const reserved = corner(40, 52, true);
   if (event) {
     // The alert flashes on the first bottom row; the second says what happened, or how the plane is doing now
-    const alertText = event.alert;
-    if (now % 1000 < 650) text(alertText, Math.max(0, Math.floor((W - textWidth(alertText)) / 2)), 40, ALERT);
+    const alertText = event.alert, alertWidth = W - reserved[0];
+    if (now % 1000 < 650) text(alertText, Math.max(0, Math.floor((alertWidth - textWidth(alertText)) / 2)), 40, ALERT, {width: alertWidth});
     const since = a.lastAt ? Math.max(1, Math.round((Date.now() - a.lastAt) / 60000)) : null;
     const status = event.detail || (a.ghost ? (since ? `Last heard ${since} min ago` : "Not in range now") : "Alt:" + fmtAlt(a.alt) + ",Spd:" + fmtSpd(a.gs));
-    line(status, 0, 52, t.metric, W - reserved, now);
+    line(status, 0, 52, t.metric, W - reserved[1], now);
     return;
   }
   let rows;
@@ -570,8 +569,8 @@ function flightScreen(a, now) {
   } else {
     rows = metrics;
   }
-  line(rows[0], 0, 40, t.metric, W, now);
-  line(rows[1], 0, 52, t.metric, W - reserved, now);
+  line(rows[0], 0, 40, t.metric, W - reserved[0], now);
+  line(rows[1], 0, 52, t.metric, W - reserved[1], now);
 }
 
 function idleScreen(now, message) {
@@ -583,10 +582,11 @@ function idleScreen(now, message) {
   // Blinking colon, like a hardware clock
   const shown = d.getSeconds() % 2 ? clock : clock.replace(":", " ");
   text(shown, Math.floor((W - textWidth(clock, 2)) / 2), 8, t.main, {scale: 2});
-  const reserved = corner(false);  // just the temperature: the clock is already here
-  line(message[0], Math.max(0, Math.floor((W - textWidth(message[0])) / 2)), 38, t.dim, W, now);
-  const width = W - reserved;
-  line(message[1], Math.max(0, Math.floor((width - textWidth(message[1])) / 2)), 50, t.dim, width, now);
+  const reserved = corner(38, 50, false);  // just the temperature: the big clock is already here
+  message.forEach((m, i) => {
+    const width = W - reserved[i];
+    line(m, Math.max(0, Math.floor((width - textWidth(plain(m))) / 2)), 38 + 12 * i, t.dim, width, now);
+  });
 }
 
 function compose(now) {
