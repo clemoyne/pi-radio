@@ -57,6 +57,7 @@ body.idle-cursor .controls { opacity: 0; pointer-events: none; }
   </select></label>
   <label id="track-row">Flight, registration or hex <input id="track" type="text" placeholder="ACA858 or C-FITW" autocomplete="off" spellcheck="false"></label>
   <label>Within <select id="radius">
+    <option value="auto">Auto: nearest that has a plane</option>
     <option value="3">3 km</option><option value="5">5 km</option><option value="10">10 km</option><option value="20">20 km</option>
     <option value="50">50 km</option><option value="100">100 km</option><option value="0">Anywhere in range</option>
   </select></label>
@@ -66,6 +67,7 @@ body.idle-cursor .controls { opacity: 0; pointer-events: none; }
   <label>Next plane every <select id="cycle">
     <option value="5">5 s</option><option value="8">8 s</option><option value="15">15 s</option><option value="30">30 s</option>
   </select></label>
+  <p class="note">A go-around joins the planes shown for 30 minutes, and a diversion for 30 minutes once sdrpi finds it (it can only tell after the flight), with a red flashing line.</p>
 
   <h3>Layout</h3>
   <label>Top line <select id="top">
@@ -74,6 +76,14 @@ body.idle-cursor .controls { opacity: 0; pointer-events: none; }
   <label>Bottom lines <select id="bottom">
     <option value="metrics">Altitude, speed, track</option><option value="airports">Airport cities</option><option value="alternate">Take turns</option>
   </select></label>
+
+  <h3>Clock and temperature</h3>
+  <label>Clock <select id="clock">
+    <option value="12">12-hour</option><option value="24">24-hour</option><option value="off">Off</option>
+  </select></label>
+  <label>Temperature <input id="temp" type="checkbox"></label>
+  <label>Temperature in <select id="tempUnit"><option value="C">°C</option><option value="F">°F</option></select></label>
+  <p class="note">Bottom right of the panel. The temperature is from sdrpi's weather station.</p>
 
   <h3>Units</h3>
   <label>Altitude <select id="alt"><option value="ft">feet</option><option value="m">metres</option></select></label>
@@ -94,7 +104,8 @@ body.idle-cursor .controls { opacity: 0; pointer-events: none; }
 <script>
 "use strict";
 const W = 128, H = 64;
-const SDRPI = "http://sdrpi.local:8080/flights/api/describe";
+const SDRPI_HOST = "http://sdrpi.local:8080";
+const SDRPI = SDRPI_HOST + "/flights/api/describe";
 
 // 5x7 dot font, five columns per character, bit 0 at the top; g, j, p, q and y use an eighth row for descenders
 const FONT = {
@@ -160,7 +171,8 @@ const THEMES = {
 };
 
 const DEFAULTS = {mode: "nearby", track: "", radius: "10", ceiling: "0", cycle: "8", top: "airline", bottom: "metrics",
-  alt: "ft", spd: "mph", trk: "deg", vr: "fts", theme: "classic", brightness: "85", unlit: true, glow: true};
+  alt: "ft", spd: "mph", trk: "deg", vr: "fts", theme: "classic", brightness: "85", unlit: true, glow: true,
+  clock: "12", temp: true, tempUnit: "C"};
 const settings = {...DEFAULTS};
 try { Object.assign(settings, JSON.parse(localStorage.getItem("plane-display") || "{}")); } catch (e) { /* private window */ }
 function save() { try { localStorage.setItem("plane-display", JSON.stringify(settings)); } catch (e) { /* not kept */ } }
@@ -210,6 +222,42 @@ function line(str, x, y, rgb, width, now) {
   }
   text(str, x, y, rgb, {width, scroll: Math.round(scroll)});
 }
+
+// A small 3x5 font for the clock and temperature in the corner
+const MINI = {
+  "0": ["###","#.#","#.#","#.#","###"], "1": [".#.","##.",".#.",".#.","###"], "2": ["###","..#","###","#..","###"],
+  "3": ["###","..#",".##","..#","###"], "4": ["#.#","#.#","###","..#","..#"], "5": ["###","#..","###","..#","###"],
+  "6": ["###","#..","###","#.#","###"], "7": ["###","..#","..#",".#.",".#."], "8": ["###","#.#","###","#.#","###"],
+  "9": ["###","#.#","###","..#","###"], ":": [".","#",".","#","."], "-": ["...","...","###","...","..."],
+  "°": [".#.","#.#",".#.","...","..."], "C": ["###","#..","#..","#..","###"], "F": ["###","#..","##.","#..","#.."],
+  "A": [".#.","#.#","###","#.#","#.#"], "P": ["##.","#.#","##.","#..","#.."], "M": ["#.#","###","###","#.#","#.#"], " ": ["..", "..", "..", "..", ".."],
+};
+function miniWidth(str) { return [...str].reduce((w, ch) => w + (MINI[ch] || MINI[" "])[0].length + 1, 0) - 1; }
+function mini(str, x, y, rgb) {
+  for (const ch of str) {
+    const g = MINI[ch] || MINI[" "];
+    g.forEach((row, r) => [...row].forEach((c, i) => { if (c === "#") dot(x + i, y + r, rgb); }));
+    x += g[0].length + 1;
+  }
+}
+function clockText(d = new Date()) {
+  const m = String(d.getMinutes()).padStart(2, "0");
+  if (settings.clock === "24") return String(d.getHours()).padStart(2, "0") + ":" + m;
+  return (d.getHours() % 12 || 12) + ":" + m + (d.getHours() < 12 ? "AM" : "PM");
+}
+function tempText() {
+  if (!settings.temp || tempC == null) return "";
+  return Math.round(settings.tempUnit === "F" ? tempC * 9 / 5 + 32 : tempC) + "°" + settings.tempUnit;
+}
+// Clock and temperature at the bottom right; returns how wide it is, so the bottom line can stop short of it
+function corner(withClock) {
+  const str = [withClock && settings.clock !== "off" ? clockText() : "", tempText()].filter(Boolean).join("  ");
+  if (!str) return 0;
+  const t = THEMES[settings.theme] || THEMES.classic, w = miniWidth(str);
+  mini(str, W - w, 54, t.metric);
+  return w + 3;
+}
+const ALERT = [255, 40, 30];  // red whatever the colour scheme
 
 function hexColour(hex) { return [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)); }
 function codeColour(code) {
@@ -284,6 +332,7 @@ function typeName(name, chars) {
 // ---- Data ----
 
 let receiver = null, aircraft = [], feedOk = false, lastFeed = 0;
+const lastKnown = new Map();  // hex -> the plane's last report, kept an hour
 const who = new Map();     // hex -> garage_pi's description {at, data}
 const names = new Map();   // hex|callsign -> sdrpi's description {at, data}
 
@@ -324,6 +373,8 @@ async function poll() {
       return out;
     });
     feedOk = true; lastFeed = Date.now();
+    for (const a of aircraft) lastKnown.set(a.hex, {...a, at: lastFeed});
+    for (const [hex, a] of lastKnown) if (lastFeed - a.at > 3600000) lastKnown.delete(hex);
   } catch (e) { feedOk = Date.now() - lastFeed < 15000; }
   describeAll();
 }
@@ -358,13 +409,93 @@ async function name(a) {
   catch (e) { names.set(key, {at: Date.now(), data: null}); }
 }
 
+// ---- Go-arounds, diversions and the temperature ----
+
+const EVENT_SHOW_MS = 30 * 60000;
+let events = [];       // {hex, callsign, reg, alert, detail, until, info}
+let goArounds = [], diversions = [];
+let tempC = null;
+
+// garage_pi spots go-arounds as they happen; each is shown until 30 minutes after it
+async function loadGoArounds() {
+  try {
+    const since = Math.floor(Date.now() / 1000) - EVENT_SHOW_MS / 1000;
+    const d = await getJSON(`/aircraft/api/search?group=go_around&field=go_around_at&since=${since}`);
+    goArounds = d.visits.filter(v => v.go_around_at).map(v => ({hex: v.hex, callsign: v.callsign || "", reg: v.reg || "",
+      alert: "GO AROUND at " + (v.go_around || "?"), detail: null, until: (v.go_around_at * 1000) + EVENT_SHOW_MS,
+      info: {actype: v.icao_type || "", type_name: v.type || ""}}));
+    refreshEvents();
+  } catch (e) { /* tried again later */ }
+}
+
+// sdrpi can only tell a diversion once the flight is over, so each is shown for 30 minutes from when this display first
+// sees it (remembered in this browser), if it happened in the last two hours
+const DIVERSION_TEXT = {
+  returned: d => `Turned back to ${d.airport}`,
+  here: d => `Landed ${d.airport}` + (d.usual ? `, not ${d.usual}` : ""),
+  away: d => `Left ${d.usual} approach` + (d.airport ? `, landed ${d.airport}` : ""),
+};
+async function loadDiversions() {
+  try {
+    const d = await getJSON(SDRPI_HOST + "/flights/api/diversions?days=1", 8000);
+    let noticed = {};
+    try { noticed = JSON.parse(localStorage.getItem("plane-display-diversions") || "{}"); } catch (e) { /* none kept */ }
+    const now = Date.now(), recent = {};
+    diversions = [];
+    for (const f of d.flights) {
+      const v = f.diversion;
+      if (!v || now - v.t * 1000 > 2 * 3600000) continue;
+      const first = noticed[f.id] || now;
+      recent[f.id] = first;
+      const key = String(f.key || "");
+      diversions.push({hex: /^[0-9a-f]{6}$/.test(key) ? key : "", reg: /^[0-9a-f]{6}$/.test(key) ? "" : key, callsign: f.callsign || "",
+        alert: "DIVERSION", detail: (DIVERSION_TEXT[v.kind] || (() => ""))(v), until: first + EVENT_SHOW_MS,
+        info: {airline: f.airline, airline_name: f.airline_name, actype: f.actype, type_name: f.type}});
+    }
+    try { localStorage.setItem("plane-display-diversions", JSON.stringify(recent)); } catch (e) { /* not kept */ }
+    refreshEvents();
+  } catch (e) { /* sdrpi not answering; tried again later */ }
+}
+function refreshEvents() { const now = Date.now(); events = [...goArounds, ...diversions].filter(e => e.until > now); }
+
+async function loadTemperature() {
+  try {
+    const d = await getJSON(SDRPI_HOST + "/weather/api/status", 8000);
+    const c = d.current;
+    // A reading over two hours old is too stale to show as "now"
+    tempC = c && c.temp_c != null && d.now - c.t < 7200 ? c.temp_c : null;
+  } catch (e) { tempC = null; }
+}
+
+const bareReg = r => (r || "").toUpperCase().replace(/-/g, "");
+function eventFor(a) {
+  return events.find(e => (e.hex && e.hex === a.hex) || (e.callsign && e.callsign === a.callsign) ||
+    (e.reg && bareReg(e.reg) === bareReg(who.get(a.hex)?.data?.reg)));
+}
+// Event planes that aren't in the list already: live if still in the feed, otherwise from their last report or the event
+function eventPlanes(list) {
+  return events.filter(e => !list.some(a => eventFor(a) === e)).map(e => {
+    const live = aircraft.find(a => eventFor(a) === e);
+    if (live) return live;
+    const last = e.hex && lastKnown.get(e.hex);
+    return {...(last || {}), hex: e.hex || e.reg || e.callsign, callsign: e.callsign || last?.callsign || "", ghost: true, event: e,
+      lastAt: last ? last.at : null};
+  });
+}
+
 // ---- Choosing which plane to show ----
 
 let showing = null, shownSince = 0;
+const RADII = [3, 5, 10, 20, 50, 100];
 function candidates() {
-  const radius = +settings.radius, ceiling = +settings.ceiling;
-  return aircraft.filter(a => (!radius || (a.km != null && a.km <= radius)) && (!ceiling || (typeof a.alt === "number" && a.alt <= ceiling)))
-    .sort((a, b) => (a.km ?? 1e9) - (b.km ?? 1e9));
+  const ceiling = +settings.ceiling;
+  const below = aircraft.filter(a => !ceiling || (typeof a.alt === "number" && a.alt <= ceiling)).sort((a, b) => (a.km ?? 1e9) - (b.km ?? 1e9));
+  let radius = +settings.radius;
+  if (settings.radius === "auto") {
+    // The smallest listed distance with a plane in it, else anywhere in range
+    radius = RADII.find(r => below.some(a => a.km != null && a.km <= r)) || 0;
+  }
+  return below.filter(a => !radius || (a.km != null && a.km <= radius));
 }
 function tracked() {
   const q = settings.track.trim().toUpperCase().replace(/\s+/g, "");
@@ -375,9 +506,11 @@ function tracked() {
 }
 function pick(now) {
   if (settings.mode === "track") return tracked();
-  const list = candidates();
+  let list = candidates();
+  if (settings.mode === "closest") list = list.slice(0, 1);
+  list = [...list, ...eventPlanes(list)];
   if (!list.length) return null;
-  if (settings.mode === "closest") return list[0];
+  if (list.length === 1) { showing = list[0].hex; return list[0]; }
   const current = showing && list.find(a => a.hex === showing);
   if (current && now - shownSince < settings.cycle * 1000) return current;
   const next = current ? list[(list.indexOf(current) + 1) % list.length] : list[0];
@@ -389,9 +522,10 @@ function pick(now) {
 
 function flightScreen(a, now) {
   const t = THEMES[settings.theme] || THEMES.classic;
+  const event = a.event || eventFor(a);
   const info = who.get(a.hex)?.data || {};
-  const named = names.get(a.hex + "|" + a.callsign)?.data || {};
-  const reg = info.reg || "";
+  const named = names.get(a.hex + "|" + a.callsign)?.data || event?.info || {};
+  const reg = info.reg || event?.reg || "";
   const callsign = a.callsign || info.callsign || "";
   const isAirline = !!named.airline && /^[A-Z]{3}\d/.test(callsign);
   const heli = a.category === "A7";
@@ -405,13 +539,25 @@ function flightScreen(a, now) {
     : airlineName(named.airline_name, chars) || callsign;
   const route = named.route ? named.route.map(r => r.iata || r.ident).join("-") : "";
   const emergency = ["7500", "7600", "7700"].includes(a.squawk);
-  const second = emergency ? "SQUAWK " + a.squawk : route || (reg && reg !== top ? reg : (callsign !== top ? callsign : ""));
+  // The flight number goes first on the second line unless the top line already shows it
+  const flightNo = callsign && callsign !== top ? callsign : "";
+  const second = emergency ? "SQUAWK " + a.squawk : [flightNo, route].filter(Boolean).join(" ") || (reg && reg !== top ? reg : "");
   const kind = typeName(named.type_name, chars) || named.actype || info.icao_type || info.model || (heli ? "Helicopter" : "") ||
     (reg !== second && reg !== top ? reg : "");
   line(top, right, 2, t.main, width, now);
   line(second, right, 13, emergency ? t.alert : t.main, width, now);
   line(kind, right, 24, t.main, width, now);
 
+  const reserved = corner(true);
+  if (event) {
+    // The alert flashes on the first bottom row; the second says what happened, or how the plane is doing now
+    const alertText = event.alert;
+    if (now % 1000 < 650) text(alertText, Math.max(0, Math.floor((W - textWidth(alertText)) / 2)), 40, ALERT);
+    const since = a.lastAt ? Math.max(1, Math.round((Date.now() - a.lastAt) / 60000)) : null;
+    const status = event.detail || (a.ghost ? (since ? `Last heard ${since} min ago` : "Not in range now") : "Alt:" + fmtAlt(a.alt) + ",Spd:" + fmtSpd(a.gs));
+    line(status, 0, 52, t.metric, W - reserved, now);
+    return;
+  }
   let rows;
   const metrics = ["Alt:" + fmtAlt(a.alt) + ",Spd:" + fmtSpd(a.gs), "Trk:" + fmtTrk(a.track) + ",Vr:" + fmtVr(a.vr)];
   const cities = named.route && named.route.map(r => plain(r.city || r.name || r.ident));
@@ -425,18 +571,22 @@ function flightScreen(a, now) {
     rows = metrics;
   }
   line(rows[0], 0, 40, t.metric, W, now);
-  line(rows[1], 0, 52, t.metric, W, now);
+  line(rows[1], 0, 52, t.metric, W - reserved, now);
 }
 
 function idleScreen(now, message) {
   const t = THEMES[settings.theme] || THEMES.classic;
   const d = new Date();
-  const clock = String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+  // The big clock is the idle screen, so it shows even with the corner clock off; AM or PM is too wide at this size
+  const clock = settings.clock === "24" ? String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0")
+    : (d.getHours() % 12 || 12) + ":" + String(d.getMinutes()).padStart(2, "0");
   // Blinking colon, like a hardware clock
   const shown = d.getSeconds() % 2 ? clock : clock.replace(":", " ");
   text(shown, Math.floor((W - textWidth(clock, 2)) / 2), 8, t.main, {scale: 2});
+  const reserved = corner(false);  // just the temperature: the clock is already here
   line(message[0], Math.max(0, Math.floor((W - textWidth(message[0])) / 2)), 38, t.dim, W, now);
-  line(message[1], Math.max(0, Math.floor((W - textWidth(message[1])) / 2)), 50, t.dim, W, now);
+  const width = W - reserved;
+  line(message[1], Math.max(0, Math.floor((width - textWidth(message[1])) / 2)), 50, t.dim, width, now);
 }
 
 function compose(now) {
@@ -444,7 +594,7 @@ function compose(now) {
   if (!feedOk) return idleScreen(now, ["No feed from", "the receiver"]);
   const a = pick(now);
   if (a) {
-    name(a);
+    if (!a.ghost || a.lat != null) name(a);
     // Ask about the next few too, so they're named when their turn comes
     if (settings.mode === "nearby") candidates().slice(0, 4).forEach(name);
     return flightScreen(a, now);
@@ -452,7 +602,7 @@ function compose(now) {
   if (settings.mode === "track") {
     return idleScreen(now, settings.track.trim() ? [plain(settings.track.trim().toUpperCase()), "not in range"] : ["Pick a flight", "in Settings"]);
   }
-  const r = +settings.radius;
+  const r = settings.radius === "auto" ? 0 : +settings.radius;
   idleScreen(now, [r ? `None within ${r}km` : "No planes", `${aircraft.length} in range`]);
 }
 
@@ -574,6 +724,10 @@ wake();
 loadReceiver().then(poll);
 setInterval(poll, 1000);
 setInterval(loadReceiver, 600000);
+loadGoArounds(); setInterval(loadGoArounds, 30000);
+loadDiversions(); setInterval(loadDiversions, 60000);
+loadTemperature(); setInterval(loadTemperature, 60000);
+setInterval(refreshEvents, 10000);
 requestAnimationFrame(frame);
 </script>
 </body>

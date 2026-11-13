@@ -1702,8 +1702,10 @@ async def cars_api(request):
         async with ClientSession() as session:
             async with session.request(request.method, CARS_API + request.path_qs, data=await request.read(),
                                        headers={"Content-Type": "application/json"}, timeout=ClientTimeout(total=30)) as reply:
-                return web.Response(status=reply.status, body=await reply.read(), content_type="application/json",
-                                    headers={"Cache-Control": "no-store"})
+                headers = {"Cache-Control": "no-store"}
+                if request.method == "GET" and request.path.startswith("/weather/api/"):
+                    headers["Access-Control-Allow-Origin"] = "*"  # garage_pi's display shows the temperature; car data stays same-origin
+                return web.Response(status=reply.status, body=await reply.read(), content_type="application/json", headers=headers)
     except (ClientError, asyncio.TimeoutError):
         return web.json_response({"error": "car store not answering"}, status=503)
 
