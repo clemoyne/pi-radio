@@ -249,12 +249,12 @@ function tempText() {
   if (!settings.temp || tempC == null) return "";
   return Math.round(settings.tempUnit === "F" ? tempC * 9 / 5 + 32 : tempC) + "°" + settings.tempUnit;
 }
-// Temperature beside the upper bottom row and the time beside the lower one, right-aligned in green, each centred on
-// the 7-dot capitals of its row (rows start at y); on its own, either takes the lower slot. Returns how much of each
+// Temperature beside the upper bottom row and the time beside the lower one, right-aligned in green, each on the same
+// baseline as the 7-dot capitals of its row (rows start at y); on its own, either takes the lower slot. Returns how much of each
 // row they take, so the text there stops short.
 const CORNER = [70, 220, 100];
 function corner(topY, bottomY, withClock) {
-  const place = (str, y) => { if (!str) return 0; const w = miniWidth(str); mini(str, W - w, y + 1, CORNER); return w + 3; };
+  const place = (str, y) => { if (!str) return 0; const w = miniWidth(str); mini(str, W - w, y + 2, CORNER); return w + 3; };
   const temp = tempText(), clock = withClock && settings.clock !== "off" ? clockText() : "";
   return clock ? [place(temp, topY), place(clock, bottomY)] : [0, place(temp, bottomY)];
 }
