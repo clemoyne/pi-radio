@@ -44,7 +44,7 @@ Source is in `aircraft/`. Dashboard: http://piaware.local/aircraft/. Reads `/run
 
 `cargo` names the cargo operator from `aircraft/cargo.json` (deployed to `/opt/aircraftlog/`; keep it the same as `sdrpi/flights/cargo.json`): callsign prefix, registered owner, or a freighter model. It is recomputed for the whole log at each start. `icao_type` keeps SkyAware's ICAO type designator, because `type` becomes the registry model when one is known.
 
-Every visit list (Interesting aircraft, Full log, watch list, emergencies) has a "Seen before" column: `with_seen_before` counts earlier visits by the same hex, so it only reaches back the log's 30 days. Clicking the count runs the Full log search for that hex. "Bank Of Utah Trustee" is a trust bank registered as owner of many US airliners (Endeavor Air's CRJ-900s among them), not one aircraft.
+Every visit list (Interesting aircraft, Full log, watch list, emergencies) has a "Seen before" column: `with_seen_before` counts earlier visits by the same hex, so it only reaches back the log's 30 days. Clicking the count runs the Full log search for that hex. Every visit list sorts by clicking a column header (`VISIT_COLUMNS` in `www/index.html`; a second click reverses it, blanks stay last); each list (`interesting`, `log`, `watch`, `emergency`) keeps its own sort in the browser's `localStorage` (`aircraft-sort`), and the note under it says the order. "Bank Of Utah Trustee" is a trust bank registered as owner of many US airliners (Endeavor Air's CRJ-900s among them), not one aircraft.
 
 `/aircraft/api/export?after=<last_seen>&after_id=<id>&limit=100` hands finished visits (unheard for `VISIT_GAP_SECONDS`) with their tracks to sdrpi's flight store, which keeps them long term on its SSD. It only reads the log.
 

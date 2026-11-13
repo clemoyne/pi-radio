@@ -82,6 +82,11 @@ a.tile:focus-visible { outline: 2px solid var(--series); outline-offset: 2px; }
 .scroll { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 th { text-align: left; font-weight: 500; font-size: 12.5px; color: var(--ink-2); padding: 6px 10px; border-bottom: 1px solid var(--axis); white-space: nowrap; }
+th button.sort { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 3px; min-height: 24px; }
+th button.sort:hover { color: var(--ink); }
+th button.sort:focus-visible { outline: 2px solid var(--series); outline-offset: 2px; border-radius: 3px; }
+th button.sort .arrow { display: inline-block; min-width: 0.9em; font-size: 9px; color: var(--series); }
+th[aria-sort="none"] button.sort:hover .arrow::after { content: "↕"; color: var(--muted); }
 td { padding: 7px 10px; border-bottom: 1px solid var(--grid); vertical-align: top; }
 td.mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px; white-space: nowrap; }
 td.num, th.num { text-align: right; }
@@ -434,10 +439,64 @@ function seenBeforeCell(v) {
   return button;
 }
 
-function visitTable(visits) {
-  const head = el("tr", null, ...["When", "Callsign", "Registration", "Type", "Group", "Seen before", "Altitude", "Closest", "Time in range", "Track"]
-    .map((h, i) => el("th", i === 5 || (i >= 7 && i < 9) ? {class: "num", title: i === 5 ? "Earlier flights by this aircraft in the last 30 days" : null} : null, h)));
-  const rows = visits.map(v => {
+// Column headers sort the list: first click sorts (biggest or newest first for numbers and times, A-Z for text),
+// the next reverses it. Each list keeps its own sort, remembered in this browser; blanks always go last.
+const VISIT_COLUMNS = [
+  {label: "When", key: v => v.first_seen, desc: true},
+  {label: "Callsign", text: true, key: v => v.callsign},
+  {label: "Registration", text: true, key: v => v.reg || v.hex},
+  {label: "Type", text: true, key: v => v.type},
+  {label: "Group", text: true, key: v => groupText(v) === "–" ? null : groupText(v)},
+  {label: "Seen before", key: v => v.seen_before, desc: true, num: true, order: ["fewest", "most"], title: "Earlier flights by this aircraft in the last 30 days"},
+  {label: "Altitude", key: v => v.alt_min, desc: true, order: ["lowest", "highest"]},
+  {label: "Closest", key: v => v.min_dist_km, num: true, order: ["nearest", "farthest"]},
+  {label: "Time in range", key: v => v.last_seen - v.first_seen, desc: true, num: true, order: ["shortest", "longest"]},
+  {label: "Track"},
+];
+const DEFAULT_SORT = {col: 0, desc: true};
+let visitSorts = {};
+try { visitSorts = JSON.parse(localStorage.getItem("aircraft-sort")) || {}; } catch (e) {}
+function sortFor(list) { const s = visitSorts[list]; return s && VISIT_COLUMNS[s.col] && VISIT_COLUMNS[s.col].key ? s : DEFAULT_SORT; }
+function isDefaultSort(list) { const s = sortFor(list); return s.col === DEFAULT_SORT.col && s.desc === DEFAULT_SORT.desc; }
+function sortedVisits(visits, list) {
+  const {col, desc} = sortFor(list), key = VISIT_COLUMNS[col].key;
+  const blank = x => x === null || x === undefined || x === "";
+  return visits.map((v, i) => ({v, i, k: key(v)})).sort((a, b) => {
+    if (blank(a.k) || blank(b.k)) return blank(a.k) - blank(b.k) || a.i - b.i;
+    const c = typeof a.k === "string" ? a.k.localeCompare(b.k, undefined, {numeric: true, sensitivity: "base"}) : a.k - b.k;
+    return (desc ? -c : c) || a.i - b.i;
+  }).map(x => x.v);
+}
+
+function orderText(list) {
+  const {col, desc} = sortFor(list), c = VISIT_COLUMNS[col];
+  if (col === 0) return desc ? "newest first." : "oldest first.";
+  return `sorted by ${c.label.toLowerCase()}, ${c.text ? (desc ? "Z to A" : "A to Z") : c.order[desc ? 1 : 0] + " first"}.`;
+}
+// The note under a list says its order, and changes with the sort
+function orderNote(list) { return el("span", {"data-sort-note": list}, orderText(list)); }
+
+function visitTable(visits, list) {
+  const sort = sortFor(list);
+  const head = el("tr", null, ...VISIT_COLUMNS.map((c, i) => {
+    const attrs = {};
+    if (c.num) attrs.class = "num";
+    if (c.title) attrs.title = c.title;
+    if (!c.key) return el("th", attrs, c.label);
+    const active = sort.col === i;
+    attrs["aria-sort"] = active ? (sort.desc ? "descending" : "ascending") : "none";
+    const button = el("button", {class: "sort", type: "button"}, c.label, el("span", {class: "arrow", "aria-hidden": "true"}, active ? (sort.desc ? "▼" : "▲") : ""));
+    button.addEventListener("click", () => {
+      visitSorts[list] = {col: i, desc: active ? !sort.desc : !!c.desc};
+      try { localStorage.setItem("aircraft-sort", JSON.stringify(visitSorts)); } catch (e) {}
+      const table = button.closest("table");
+      table.replaceChildren(...visitTable(visits, list));
+      document.querySelectorAll(`[data-sort-note="${list}"]`).forEach(note => { note.textContent = orderText(list); });
+      table.querySelector(`th:nth-child(${i + 1}) button`).focus();
+    });
+    return el("th", attrs, button);
+  }));
+  const rows = sortedVisits(visits, list).map(v => {
     const hasTrack = v.track_points > 0 && v.id !== null;
     const row = el("tr", hasTrack ? {class: "has-track"} : null,
       el("td", {class: "nowrap"}, stamp(v.first_seen)),
@@ -470,17 +529,17 @@ function clearButton(text, onClick) {
   button.addEventListener("click", onClick);
   return button;
 }
-function countText(visits, limit, perAircraft) {
+function countText(visits, limit, perAircraft, list) {
   const noun = perAircraft ? "aircraft, latest flight of each" : visits.length === 1 ? "flight" : "flights";
-  return `${fmt.format(visits.length)}${visits.length >= limit ? "+" : ""} ${noun}, newest first.`;
+  return [`${fmt.format(visits.length)}${visits.length >= limit ? "+" : ""} ${noun}, `, orderNote(list)];
 }
 // The private tile counts aircraft, not flights, so its list keeps each aircraft's latest flight
 function latestPerAircraft(visits) { const seen = new Set(); return visits.filter(v => !seen.has(v.hex) && seen.add(v.hex)); }
 
 function showInteresting(visits, limit, emptyText, period) {
-  $("interesting").replaceChildren(...(visits.length ? visitTable(visits) : [el("tr", null, el("td", {class: "empty"}, emptyText))]));
+  $("interesting").replaceChildren(...(visits.length ? visitTable(visits, "interesting") : [el("tr", null, el("td", {class: "empty"}, emptyText))]));
   if (period) {
-    $("interesting-note").replaceChildren(`${$("type-filter").selectedOptions[0].textContent} ${period.label}: ${countText(visits, limit, period.perAircraft)} `,
+    $("interesting-note").replaceChildren(`${$("type-filter").selectedOptions[0].textContent} ${period.label}: `, ...countText(visits, limit, period.perAircraft, "interesting"), " ",
       clearButton("Show the last 30 days", () => { interestingPeriod = null; renderInteresting(); }));
   } else {
     $("interesting-note").textContent = `The latest ${limit} matching flights from the last 30 days, with a track when one was saved. ${INTERESTING_NOTE}`;
@@ -750,7 +809,7 @@ function renderWatches() {
     remove.addEventListener("click", () => removeWatch(w.id));
     const sinceText = w.since !== null ? ` · ${localDate(w.since)}` : "";
     const summary = w.visits.length ? `${w.visits.length}${w.visits.length >= 100 ? "+" : ""} logged, latest ${stamp(w.visits[0].last_seen)}` : "Not heard yet";
-    const details = w.visits.length ? el("details", {"data-id": String(w.id)}, el("summary", null, "Show log"), el("div", {class: "scroll"}, el("table", null, ...visitTable(w.visits)))) : null;
+    const details = w.visits.length ? el("details", {"data-id": String(w.id)}, el("summary", null, "Show log"), el("div", {class: "scroll"}, el("table", null, ...visitTable(w.visits, "watch")))) : null;
     if (details && open.has(String(w.id))) details.open = true;
     return el("div", {class: "watch"},
       el("div", {class: "watch-head"},
@@ -769,7 +828,7 @@ function renderEmergencies() {
   $("emergency-note").textContent = `${now.length ? "" : "None in range right now. "}7500 means hijacking, 7600 radio failure and 7700 a general emergency. A garbled message can occasionally show a false one. `
     + (recent.length ? `${recent.length} in the last 30 days${now.length ? ", listed below the current one" : ""}.` : "None in the last 30 days.");
   const rows = [...now.map(v => ({...v, emergency: v.squawk})), ...recent];
-  $("emergency-table").replaceChildren(...(rows.length ? visitTable(rows) : []));
+  $("emergency-table").replaceChildren(...(rows.length ? visitTable(rows, "emergency") : []));
 }
 
 function render() {
@@ -855,12 +914,12 @@ async function search() {
   try {
     const result = await api("search?" + params);
     if (logPeriod) {
-      $("search-note").replaceChildren(`Flights ${logPeriod.label}: ${countText(result.visits, 200)} Shows up to 200. `,
+      $("search-note").replaceChildren(`Flights ${logPeriod.label}: `, ...countText(result.visits, 200, false, "log"), " Shows up to 200. ",
         clearButton("Clear", () => { logPeriod = null; search(); }));
     } else {
-      $("search-note").textContent = `${fmt.format(result.visits.length)} result${result.visits.length === 1 ? "" : "s"}, newest first. Shows up to 200.`;
+      $("search-note").replaceChildren(`${fmt.format(result.visits.length)} result${result.visits.length === 1 ? "" : "s"}, `, orderNote("log"), " Shows up to 200.");
     }
-    $("results").replaceChildren(...(result.visits.length ? visitTable(result.visits) : [el("tr", null, el("td", {class: "empty"}, "No matching flights."))]));
+    $("results").replaceChildren(...(result.visits.length ? visitTable(result.visits, "log") : [el("tr", null, el("td", {class: "empty"}, "No matching flights."))]));
   } catch (err) {
     $("search-note").textContent = err.message;
   }
