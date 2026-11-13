@@ -20,7 +20,7 @@ What's next or open:
 - Diversions: none detected yet (8-12 Nov were calm). Check the first bad-weather day for false alarms or misses
 - Weather: the LaCrosse sensor's battery is low. Readings come every 15 minutes (75 s away from tires each time, about 8% of the time); the first weekly station search runs Sunday 15 Nov at 3 am. A second RTL-SDR on porch_pi would allow continuous weather without costing tire time
 - VIP list: the CC-330 Husky 330001's hex isn't in plane-alert-db; add it to `flights/vip.json` once it's seen
-- porch_pi dropped off Wi-Fi once overnight (11-12 Nov) and has no persistent journal to say why. Its pre-move `/var/lib/tpms/tpms.db.moved-to-sdrpi` and `key` can be deleted
+- porch_pi dropped off Wi-Fi on 11-12 Nov and again 19:40-22:06 on 12 Nov (the Pi kept running; spooled readings arrived after a power cycle). Since 12 Nov its Wi-Fi power saving is off, `netwatch` reconnects or reboots on its own and the journal is persistent: if it drops again, check `journalctl -b -1` and `-u netwatch` there. Its pre-move `/var/lib/tpms/tpms.db.moved-to-sdrpi` and `key` can be deleted
 - garage_pi's "seen before" only reaches back its 30-day log; sdrpi's flights dashboard holds the full history
 - Ideas offered but not started: AIS, gas and water meters, Weatheradio, APRS
 

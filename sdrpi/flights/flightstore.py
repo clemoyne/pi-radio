@@ -653,7 +653,7 @@ class Store:
                                         "detail": len(other_days)}
                     continue
             usual = collections.Counter(a for r in others for k, a, _ in events.get(r[0], []) if k == "landing")
-            if usual and (alt_min or 99999) <= DIVERSION_APPROACH_FT:
+            if usual and alt_min is not None and alt_min <= DIVERSION_APPROACH_FT:
                 home_airport, count = usual.most_common(1)[0]
                 days_there = {day(r[2]) for r in others if any(k == "landing" and a == home_airport for k, a, _ in events.get(r[0], []))}
                 if (len(days_there) >= DIVERSION_HISTORY and not any(a == home_airport for _, a, _ in mine)
@@ -698,6 +698,7 @@ class Store:
             return
         with self.lock:
             while self.size() > PRUNE_TO_BYTES and not stop_requested:
+                before = self.size()
                 with self.db:
                     ids = [r[0] for r in self.db.execute("SELECT id FROM flights WHERE interesting = 0 AND points > 0 "
                                                          "ORDER BY first_seen LIMIT ?", (PRUNE_CHUNK,))]
@@ -716,6 +717,9 @@ class Store:
                         self.db.execute("DELETE FROM flights WHERE id IN (%s)" % marks, ids)
                 self.db.execute("PRAGMA incremental_vacuum")
                 self.db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                if self.size() >= before:
+                    log("prune stalled at", before, "bytes; stopping")
+                    break
             log("pruned to", self.size(), "bytes")
 
     def write_status(self):
@@ -736,7 +740,7 @@ class Store:
                 self.assign_routes()
                 self.prune()
                 self.refresh_diversions()
-            except (OSError, ValueError, KeyError, sqlite3.Error) as error:
+            except Exception as error:  # whatever it was, the next sync tries again
                 self.status["last_error"] = str(error)[:200]
                 log("sync failed:", error)
             try:
@@ -786,13 +790,17 @@ class Api(http.server.BaseHTTPRequestHandler):
         self.since = int(time.time()) - days * 86400 if days else 0
         radius = query.get("r", "1")
         self.radius = float(radius) if re.fullmatch(r"\d+(\.\d+)?", radius) and 0 < float(radius) <= 50 else 1.0
-        self.db = sqlite3.connect("file:%s?mode=ro" % DB_PATH, uri=True, timeout=30)
+        self.db = None
         try:
+            # One read transaction, so a sync landing mid-request can't make its queries disagree
+            self.db = sqlite3.connect("file:%s?mode=ro" % DB_PATH, uri=True, timeout=30, isolation_level=None)
+            self.db.execute("BEGIN")
             self.respond(200, handler(query))
-        except sqlite3.Error as error:
+        except (sqlite3.Error, OSError) as error:
             self.respond(500, {"error": str(error)})
         finally:
-            self.db.close()
+            if self.db is not None:
+                self.db.close()
 
     def airport_name(self, ident):
         return self.store.airports.names.get(ident, ident)
@@ -1101,7 +1109,8 @@ class Api(http.server.BaseHTTPRequestHandler):
             if r["go_around"]:
                 found = self.go_arounds(r["id"])
                 r["go_around_count"] = len(found) or 1
-                r["added_s"] = sum(g["added_s"] or 0 for g in found) if found else None
+                known_added = [g["added_s"] for g in found if g["added_s"] is not None]
+                r["added_s"] = sum(known_added) if known_added else None
                 r["added_at_least"] = any(g["how"] == "at least" for g in found)
         return {"flights": rows}
 
@@ -1129,8 +1138,8 @@ class Api(http.server.BaseHTTPRequestHandler):
             g["airport_name"] = self.airport_name(g["airport"])
         return found
 
-    def diversion(self, flight_id):
-        d = self.store.diversions.get(flight_id)
+    def diversion(self, flight_id, diversions=None):
+        d = (self.store.diversions if diversions is None else diversions).get(flight_id)
         if not d:
             return None
         return dict(d, airport_name=self.airport_name(d["airport"]) if d["airport"] else None,
@@ -1143,7 +1152,7 @@ class Api(http.server.BaseHTTPRequestHandler):
         rows = self.rows("""SELECT id, COALESCE(reg, hex) AS key, callsign, type, actype, cargo, airline, first_seen FROM flights
                             WHERE id IN (%s)""" % ",".join("?" * len(found)), list(found))
         for r in rows:
-            r["diversion"] = self.diversion(r["id"])
+            r["diversion"] = self.diversion(r["id"], found)  # the same snapshot, though a sync may replace the store's
             r["airline_name"] = self.airline_name(r["airline"]) if r["airline"] else None
         rows.sort(key=lambda r: -r["diversion"]["t"])
         return {"flights": rows[:MAX_LIST]}
