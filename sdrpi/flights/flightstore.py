@@ -61,8 +61,9 @@ DIVERSION_RETURN_S = 600  # out and back to the same airport, longer than this a
 DIVERSION_RETURN_KM = 20  # ...farther than this, is a flight that turned back
 DIVERSION_APPROACH_KM = 30  # diverted away: came this close to its usual airport...
 DIVERSION_APPROACH_FT = 8000  # ...this low, then left
-# Air ambulances fly a flight number wherever the patient is, so they never count as diverting
-DIVERSION_EXCLUDED_PREFIXES = ("PHX",)
+# Flight numbers that go wherever they're needed never count as diverting: air ambulances (PHX) and AirSprint's
+# fractional-ownership jets (ASP)
+DIVERSION_EXCLUDED_PREFIXES = ("PHX", "ASP")
 MAX_LIST = 200
 # What the Types pages group by: the ICAO designator, or the logged type (usually the registry model) when there isn't one
 TYPE_KEY = "COALESCE(actype, type)"
