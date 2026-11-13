@@ -21,7 +21,8 @@ h1{font-size:22px;margin:0}
 #radio b{font-weight:600}
 .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;background:var(--bad)}
 .dot.on{background:var(--ok)}
-main{max-width:1100px;margin:0 auto;padding:0 16px 32px;display:grid;gap:14px}
+/* minmax(0,1fr): a wide table scrolls in its own box instead of widening the column, which the charts would then be redrawn to fill */
+main{max-width:1100px;margin:0 auto;padding:0 16px 32px;display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px}
 .tile,.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
 .tile .n{font-size:30px;font-weight:650;font-variant-numeric:tabular-nums}
@@ -32,8 +33,8 @@ h2{font-size:15px;margin:0 0 10px}
 .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
 svg{display:block;width:100%;overflow:visible}
 svg text{fill:var(--dim);font-size:11px}
-.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-@media (max-width:760px){.two{grid-template-columns:1fr}}
+.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media (max-width:760px){.two{grid-template-columns:minmax(0,1fr)}}
 table{width:100%;border-collapse:collapse;font-size:13.5px;font-variant-numeric:tabular-nums}
 th{text-align:left;color:var(--dim);font-weight:500;border-bottom:1px solid var(--line);padding:4px 6px}
 td{padding:4px 6px;border-bottom:1px solid var(--grid);white-space:nowrap}
@@ -57,8 +58,8 @@ td{padding:4px 6px;border-bottom:1px solid var(--grid);white-space:nowrap}
 input[type=search]{font:inherit;font-size:13.5px;padding:5px 9px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--ink);width:min(260px,100%)}
 #detail[hidden]{display:none}
 #detail .close{font:inherit;font-size:13px;border:1px solid var(--line);background:none;color:var(--dim);border-radius:7px;padding:3px 10px;cursor:pointer}
-.charts{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-@media (max-width:760px){.charts{grid-template-columns:1fr}}
+.charts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media (max-width:760px){.charts{grid-template-columns:minmax(0,1fr)}}
 .facts{color:var(--dim);font-size:13px;margin:0 0 10px}
 </style>
 </head>
