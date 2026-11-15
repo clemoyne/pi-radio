@@ -5,12 +5,12 @@
 Three Pis on the home LAN, all receive-only; sdrpi is the hub. Details of each piece are in the sections below and in `../garage_pi/CLAUDE.md` and `../porch_pi/CLAUDE.md`. The three are mirrored into `../pi-radio` by its `sync.sh`; after a commit there, its `push.sh` pushes to the private `clemoyne/pi-radio-private` (full history) and replays the commits onto the public `clemoyne/pi-radio` (clean history from 12 Nov 2026), refusing if anything in its gitignored `.leakcheck` would be published.
 
 Built and running:
-- sdrpi (HackRF, USB Wi-Fi dongle, SSD):
+- sdrpi (HackRF, SSD):
   - Scanner: live listening, auto-recorded clips, DMR/P25 voice, go-around recordings with the static cut out, and overnight collections (railway, business radio)
   - ACARS mode: classic ACARS or VDL2, with CPDLC and ADS-C explained in plain words
   - Flights dashboard: routes, go-around time added, diversions, VIP aircraft, a top-20 leaderboard and "seen before" counts
   - Car counter store and page, and the weather dashboard, both fed by porch_pi
-  - Bluetooth and Wi-Fi trackers, the status page, satellite pass recording (satwx), and the night band survey with its signal identification tools
+  - Bluetooth tracker, the status page, satellite pass recording (satwx), and the night band survey with its signal identification tools
 - garage_pi (PiAware): aircraft log (go-arounds sent to sdrpi, watch list, "seen before"), plane display, Bluetooth tracker, status page
 - porch_pi (RTL-SDR): rtl_433 forwarder for tire and weather sensors, on band `315w`
 
@@ -22,6 +22,7 @@ What's next or open:
 - VIP list: the CC-330 Husky 330001's hex isn't in plane-alert-db; add it to `flights/vip.json` once it's seen
 - porch_pi dropped off Wi-Fi on 11-12 Nov and again 19:40-22:06 on 12 Nov (the Pi kept running; spooled readings arrived after a power cycle). Since 12 Nov its Wi-Fi power saving is off, `netwatch` reconnects or reboots on its own and the journal is persistent: if it drops again, check `journalctl -b -1` and `-u netwatch` there. Its pre-move `/var/lib/tpms/tpms.db.moved-to-sdrpi` and `key` can be deleted
 - garage_pi's "seen before" only reaches back its 30-day log; sdrpi's flights dashboard holds the full history
+- Wi-Fi tracker: its USB dongle moved to porch_pi on 15 Nov 2026, so `wifitracker` is stopped and disabled on sdrpi and out of the status page's checks. Nothing on porch_pi uses it yet
 - Ideas offered but not started: AIS, gas and water meters, Weatheradio, APRS
 
 ## Target
@@ -120,6 +121,7 @@ What's next or open:
 
 ## Wi-Fi tracker
 
+- Not running since 15 Nov 2026: the dongle moved to porch_pi, `wifitracker` is disabled, and `status/config.json` no longer checks its service, data file, `wlan1` or restarts. The page still shows the last data. To bring it back, plug the dongle in, `systemctl enable --now wifitracker` and restore those four entries
 - Passive tracker on the USB dongle (RTL8188CUS, 2.4 GHz only); source in `wifi/`, deployed to `/mnt/data/wifitracker/app`, unit `wifitracker`
 - Page at http://sdrpi.local:8080/wifi/, served by the scanner; all three pages link to each other
 - Hops channels 1, 6 and 11 only, 2 s each: at 0.35 s the dongle silently stopped receiving within minutes while the service stayed active. After 90 s without a frame the tracker exits so systemd restarts it (logged as "no frames")
