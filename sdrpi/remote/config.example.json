@@ -1,0 +1,10 @@
+{
+  "team": "https://example-team.cloudflareaccess.com",
+  "aud": "the Access application's audience tag (the kid= in its login redirect)",
+  "owners": ["owner@example.com"],
+  "sites": {
+    "radio.example.com": {"upstream": "http://localhost:8080", "local": "http://sdrpi.local:8080"},
+    "planes.example.com": {"upstream": "http://piaware.local", "local": "http://piaware.local",
+                           "also": {"/flights/api/": "http://localhost:8080", "/weather/api/": "http://localhost:8080"}}
+  }
+}
