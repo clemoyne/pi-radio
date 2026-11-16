@@ -19,7 +19,7 @@ import wave
 from pathlib import Path
 
 import numpy as np
-from aiohttp import ClientError, ClientSession, ClientTimeout, WSMsgType, web
+from aiohttp import ClientError, ClientSession, ClientTimeout, TCPConnector, ThreadedResolver, WSMsgType, web
 from scipy import fft, signal
 
 HERE = Path(__file__).resolve().parent
@@ -75,7 +75,7 @@ ACARS_LABELS = {
 BLUETOOTH_PAGE = Path("/mnt/data/bletracker/app/www/index.html")
 BLUETOOTH_DATA = Path("/run/bletracker/data.json")
 WIFI_PAGE = Path("/mnt/data/wifitracker/app/www/index.html")
-WIFI_DATA = Path("/run/wifitracker/data.json")
+WIFI_DATA = "http://porch-pi.local:8096/data.json"  # the Wi-Fi dongle moved to porch_pi on 15 Nov 2026
 STATUS_WWW = Path("/mnt/data/pistatus/app/www")
 STATUS_DATA = Path("/run/pistatus/status.json")
 STATUS_API = "http://127.0.0.1:8093/status/api/power"  # pistatus checks and forwards power requests; it never runs as root
@@ -1482,7 +1482,7 @@ class Radio:
         while True:
             await asyncio.sleep(EMERGENCY_POLL_S)
             try:
-                async with ClientSession() as session:
+                async with lan_session() as session:
                     async with session.get(EMERGENCY_URL, timeout=ClientTimeout(total=15)) as reply:
                         data = await reply.json(content_type=None)
                 current = [v for v in data.get("emergencies_now") or [] if v.get("squawk") in ("7500", "7600", "7700")]
@@ -1614,6 +1614,11 @@ async def bluetooth_data(_request):
     return web.FileResponse(BLUETOOTH_DATA, headers={"Cache-Control": "no-store"})
 
 
+def lan_session():
+    """aiodns, which aiohttp uses when it's installed, can't resolve .local names; the system resolver can (mDNS)."""
+    return ClientSession(connector=TCPConnector(resolver=ThreadedResolver()))
+
+
 async def wifi_redirect(_request):
     raise web.HTTPFound("/wifi/")
 
@@ -1623,9 +1628,13 @@ async def wifi_page(_request):
 
 
 async def wifi_data(_request):
-    if not WIFI_DATA.exists():
-        raise web.HTTPNotFound()
-    return web.FileResponse(WIFI_DATA, headers={"Cache-Control": "no-store"})
+    try:
+        async with lan_session() as session:
+            async with session.get(WIFI_DATA, timeout=ClientTimeout(total=10)) as reply:
+                return web.Response(status=reply.status, body=await reply.read(), content_type="application/json",
+                                    headers={"Cache-Control": "no-store"})
+    except (ClientError, asyncio.TimeoutError):
+        return web.json_response({"error": "porch_pi's Wi-Fi tracker not answering"}, status=503)
 
 
 async def status_redirect(_request):

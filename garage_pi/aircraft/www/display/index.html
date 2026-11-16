@@ -104,7 +104,8 @@ body.idle-cursor .controls { opacity: 0; pointer-events: none; }
 <script>
 "use strict";
 const W = 128, H = 64;
-const SDRPI_HOST = "http://sdrpi.local:8080";
+// Away from home (https, through sdrpi's remotegate) the same site answers sdrpi's APIs
+const SDRPI_HOST = location.protocol === "https:" ? "" : "http://sdrpi.local:8080";
 const SDRPI = SDRPI_HOST + "/flights/api/describe";
 
 // 5x7 dot font, five columns per character, bit 0 at the top; g, j, p, q and y use an eighth row for descenders

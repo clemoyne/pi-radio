@@ -21,9 +21,11 @@ echo "router ${gateway:-(no default route)} not answering for $fails minutes"
 
 case "$fails" in
   3)
-    echo "reconnecting wlan0"
-    nmcli device disconnect wlan0
-    nmcli device connect wlan0
+    # The Wi-Fi tracker's dongle is unmanaged, so the managed one is the network's, whatever it's called
+    iface=$(nmcli -t -f DEVICE,TYPE,STATE device | awk -F: '$2 == "wifi" && $3 != "unmanaged" {print $1; exit}')
+    echo "reconnecting ${iface:-wlan0}"
+    nmcli device disconnect "${iface:-wlan0}"
+    nmcli device connect "${iface:-wlan0}"
     ;;
   6)
     echo "reloading the rtl8192cu driver"

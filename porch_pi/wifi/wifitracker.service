@@ -1,0 +1,28 @@
+[Unit]
+Description=Passive 2.4 GHz Wi-Fi presence tracker on the second dongle (page on sdrpi)
+After=network-online.target NetworkManager.service
+StartLimitIntervalSec=0
+
+[Service]
+User=pi
+# WIFITRACKER_MAC (the tracker's dongle) is set here, on the Pi only
+EnvironmentFile=/etc/default/wifitracker
+Environment=WIFITRACKER_DB=/var/lib/wifitracker/tracker.db WIFITRACKER_IDS=/opt/wifitracker/ids.db WIFITRACKER_PORT=8096
+ExecStart=/usr/bin/python3 -I /opt/wifitracker/wifitracker.py
+Restart=always
+RestartSec=60
+StateDirectory=wifitracker
+RuntimeDirectory=wifitracker
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=restart
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+Nice=10
+IOSchedulingClass=idle
+CPUQuota=50%
+
+[Install]
+WantedBy=multi-user.target

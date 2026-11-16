@@ -2,6 +2,7 @@
 """Passive 2.4 GHz Wi-Fi presence tracker. Reads frame headers and management data only."""
 import collections
 import functools
+import http.server
 import json
 import math
 import os
@@ -12,12 +13,16 @@ import sqlite3
 import struct
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
-STATE_DB = "/mnt/data/wifitracker/tracker.db"
-IDS_DB = "/mnt/data/wifitracker/app/ids.db"
+# The defaults are sdrpi's; porch_pi's unit sets these, since its network also runs on an rtl8192cu dongle
+STATE_DB = os.environ.get("WIFITRACKER_DB", "/mnt/data/wifitracker/tracker.db")
+IDS_DB = os.environ.get("WIFITRACKER_IDS", "/mnt/data/wifitracker/app/ids.db")
 DATA_JSON = "/run/wifitracker/data.json"
+DONGLE_MAC = os.environ.get("WIFITRACKER_MAC", "").lower()  # when set, only this dongle is used
+DATA_PORT = int(os.environ.get("WIFITRACKER_PORT", "0"))  # when set, data.json is served here for sdrpi's page
 DRIVER = "rtl8192cu"
 IW = "/usr/sbin/iw"
 IP = "/usr/sbin/ip"
@@ -90,12 +95,44 @@ def on_signal(_signum, _frame):
     stop_requested = True
 
 
+def route_interfaces():
+    with open("/proc/net/route") as routes:
+        return {line.split()[0] for line in list(routes)[1:] if line.split()[1] == "00000000"}
+
+
 def find_dongle():
+    carrying = route_interfaces()
     for path in Path("/sys/class/net").glob("wlan*"):
         driver = path / "device" / "driver"
-        if driver.exists() and os.path.basename(os.readlink(driver)) == DRIVER:
-            return path.name
-    raise RuntimeError("no %s Wi-Fi dongle found" % DRIVER)
+        if not driver.exists() or os.path.basename(os.readlink(driver)) != DRIVER:
+            continue
+        if DONGLE_MAC and (path / "address").read_text().strip().lower() != DONGLE_MAC:
+            continue
+        if path.name in carrying:
+            raise RuntimeError("%s carries the network connection; not putting it in monitor mode" % path.name)
+        return path.name
+    raise RuntimeError("no %s Wi-Fi dongle%s found" % (DRIVER, " with address " + DONGLE_MAC if DONGLE_MAC else ""))
+
+
+class DataHandler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        try:
+            body = open(DATA_JSON, "rb").read() if self.path == "/data.json" else None
+        except FileNotFoundError:
+            body = None
+        self.send_response(200 if body else 404)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body or b"{}")
+
+    def log_message(self, *_args):
+        pass
+
+
+def serve_data():
+    server = http.server.ThreadingHTTPServer(("", DATA_PORT), DataHandler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
 
 
 def start_monitor(iface):
@@ -519,6 +556,8 @@ class Tracker:
 def main():
     signal.signal(signal.SIGTERM, on_signal)
     signal.signal(signal.SIGINT, on_signal)
+    if DATA_PORT:
+        serve_data()
     Tracker().run()
     return 0
 

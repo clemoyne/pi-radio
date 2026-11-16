@@ -12,7 +12,7 @@ Built and running:
   - Car counter store and page, and the weather dashboard, both fed by porch_pi
   - Bluetooth tracker, the status page, satellite pass recording (satwx), and the night band survey with its signal identification tools
 - garage_pi (PiAware): aircraft log (go-arounds sent to sdrpi, watch list, "seen before"), plane display, Bluetooth tracker, status page
-- porch_pi (RTL-SDR): rtl_433 forwarder for tire and weather sensors, on band `315w`
+- porch_pi (RTL-SDR, two Wi-Fi dongles): rtl_433 forwarder for tire and weather sensors, on band `315w`, and the Wi-Fi tracker (page on sdrpi)
 
 What's next or open:
 - Weather satellites: the scanner's vertical antenna can't hear Meteor-M. Nothing was decoded on the 12 Nov test passes (33° and 72° up). The fix is a V-dipole (two 53 cm elements, 120°, horizontal) or a QFH, and optionally a GPIO-driven RF switch so satwx flips antennas itself. The 13-14 Nov passes (20:00, 21:40, 02:32, 04:12) are scheduled and will come up empty without a new antenna. The page of decoded pictures isn't built yet
@@ -22,7 +22,7 @@ What's next or open:
 - VIP list: the CC-330 Husky 330001's hex isn't in plane-alert-db; add it to `flights/vip.json` once it's seen
 - porch_pi dropped off Wi-Fi on 11-12 Nov and again 19:40-22:06 on 12 Nov (the Pi kept running; spooled readings arrived after a power cycle). Since 12 Nov its Wi-Fi power saving is off, `netwatch` reconnects or reboots on its own and the journal is persistent: if it drops again, check `journalctl -b -1` and `-u netwatch` there. Its pre-move `/var/lib/tpms/tpms.db.moved-to-sdrpi` and `key` can be deleted
 - garage_pi's "seen before" only reaches back its 30-day log; sdrpi's flights dashboard holds the full history
-- Wi-Fi tracker: its USB dongle moved to porch_pi on 15 Nov 2026, so `wifitracker` is stopped and disabled on sdrpi and out of the status page's checks. Nothing on porch_pi uses it yet
+- Wi-Fi tracker: moved to porch_pi on 15 Nov 2026. Nothing checks it on a status page (porch_pi has none, and sdrpi's checks only local files); if the Wi-Fi page says it isn't answering, check `systemctl status wifitracker` there
 - Ideas offered but not started: AIS, gas and water meters, Weatheradio, APRS
 
 ## Target
@@ -49,6 +49,7 @@ What's next or open:
 - Automatic switching, both on by default and set on the ACARS page (`/mnt/data/scanner/settings.json`): a go-around pauses ACARS mode, records, then `after_job()` resumes ACARS until its original end; an emergency squawk in garage_pi's `emergencies_now` (polled every 60 s) starts ACARS mode, kept running 10 minutes past the last sighting. It never interrupts a go-around or a user's continuous recording. Stopping emergency ACARS mode keeps it off until those emergencies clear. `SCANNER_EMERGENCY_URL` overrides the feed for testing
 - VDL2: the ACARS page's "Decode VDL2" setting (`acars_vdl2`) makes ACARS mode run dumpvdl2 (`DUMPVDL2` in `/mnt/data/scanner/decoders/bin`, built from github.com/szpajder/dumpvdl2 against the same libacars) on `VDL2_FREQS` (136.650-136.975 MHz, HackRF at 2.1 MS/s on 136.9 MHz) instead of acarsdec. Frames carrying an ACARS message go in the same `messages` table; `decoded` holds `via: VDL2` and the AVLC addresses. Without the binary it falls back to classic ACARS. dumpvdl2 sets its rate with `--oversample` (×105 kS/s), not a sample rate. `AcarsExplainer` reads libacars' `arinc622` from either place (acarsdec nests it under `libacars`) and explains CPDLC: `FANS_IMI` names the message kind from the text (AT1, CR1, CC1, DR1, ADS), `ATC_CENTRES` the control centre from the ground address prefix, `CPDLC_MEANINGS` the common replies
 - Collections (`COLLECTIONS`): `POST /api/collect {"plan": [{"group", "from", "to"}]}` runs a `CollectJob` per time slot: the HackRF sits on the group's 2 MHz block (railway: 15 kHz channels 159.81-161.61 around 160.7175 MHz; business: 6.25 kHz raster 462.15-463.85 around 463.003 MHz), watches every channel's power in each FFT, follows a keyed-up channel until 10 s of silence, and keeps only transmissions that pass `TransmissionGate` with `short_calls` (loudness varying 3.5 dB instead of 5 is enough when 300-1200 Hz outweighs 2.5-4 kHz hiss, since brief railway calls barely vary). Rejected conversations are saved to `/mnt/data/scanner/collect-rejects` (first 40) while that folder exists. Goals: railway 15 min, business 3 conversations or 5 min. A slot whose group is done hands over to any group still short. Clips carry `collection` and are never expired. It steps aside for a listener, go-around or ACARS mode and resumes; Stop on the banner ends it for the night. State in `/mnt/data/scanner/collect.json`. The band monitor's sweep can't drive this: it shows a comb of false activity across 160-161.6 MHz
+- aiohttp uses aiodns (`python3-aiodns` is installed), which can't resolve `.local` names, so fetches from the other Pis (garage_pi's emergency feed, porch_pi's Wi-Fi data) go through `lan_session()`, which uses the system resolver. Until 15 Nov the emergency feed failed this way without a log line, so no real emergency ever started ACARS mode or a recording (the 15 Nov 01:14-01:21 ones, POE2514 7700 among them, came from a test feed)
 - Before restarting `sdrpi-scanner`, check `curl localhost:8080/api/health`: `listening` true means someone is listening. A recent auto-recording line in the log does not prove the radio is idle
 
 ## Flights dashboard
@@ -121,12 +122,12 @@ What's next or open:
 
 ## Wi-Fi tracker
 
-- Not running since 15 Nov 2026: the dongle moved to porch_pi, `wifitracker` is disabled, and `status/config.json` no longer checks its service, data file, `wlan1` or restarts. The page still shows the last data. To bring it back, plug the dongle in, `systemctl enable --now wifitracker` and restore those four entries
-- Passive tracker on the USB dongle (RTL8188CUS, 2.4 GHz only); source in `wifi/`, deployed to `/mnt/data/wifitracker/app`, unit `wifitracker`
-- Page at http://sdrpi.local:8080/wifi/, served by the scanner; all three pages link to each other
+- Passive tracker on a USB dongle (RTL8188CUS, 2.4 GHz only); source in `wifi/`. Since 15 Nov 2026 it runs on porch_pi (see its CLAUDE.md; the same `wifitracker.py`, set by `WIFITRACKER_*` variables in its unit, which serves `data.json` on port 8096)
+- Page at http://sdrpi.local:8080/wifi/, served by the scanner, which fetches `/wifi/data/data.json` from porch_pi (`WIFI_DATA`); all three pages link to each other
+- On sdrpi, `wifitracker` (deployed to `/mnt/data/wifitracker/app`) is disabled and `status/config.json` no longer checks its service, data file, `wlan1` or restarts. Its data up to 15 Nov stays in `/mnt/data/wifitracker/tracker.db`. To bring it back, plug the dongle in, `systemctl enable --now wifitracker`, restore those four entries and point `WIFI_DATA` back at the local file
 - Hops channels 1, 6 and 11 only, 2 s each: at 0.35 s the dongle silently stopped receiving within minutes while the service stayed active. After 90 s without a frame the tracker exits so systemd restarts it (logged as "no frames")
-- `/mnt/data/wifitracker/tracker.db` kept 90 days; `/run/wifitracker/data.json` rewritten each minute; log at `/mnt/data/logs/wifitracker.log`
-- `wlan0` (built-in) carries the Pi's network connection. Never put it in monitor mode. The dongle is found by driver and left unmanaged by `/etc/NetworkManager/conf.d/90-wifi-monitor-dongle.conf`
+- The database is kept 90 days and `/run/wifitracker/data.json` rewritten each minute (on sdrpi in `/mnt/data/wifitracker`, log `/mnt/data/logs/wifitracker.log`; on porch_pi in `/var/lib/wifitracker`, journal log)
+- `wlan0` (built-in) carries the Pi's network connection. Never put it in monitor mode. On sdrpi the dongle is found by driver and left unmanaged by `/etc/NetworkManager/conf.d/90-wifi-monitor-dongle.conf`; on porch_pi, whose network is also an `rtl8192cu` dongle, both go by MAC address (`WIFITRACKER_MAC`), and the tracker refuses any interface carrying the default route
 - Network names are broadcast by anything in range, so the page must only insert data with `textContent`
 - Only frame headers and management data are read. SSIDs in probe requests are never read. Randomized client addresses stay in memory and are only counted
 
@@ -135,6 +136,14 @@ What's next or open:
 - Source in `comparison/`, deployed to `/mnt/data/comparison`. `attic-compare.timer` builds `report.txt` there once at 2026-11-10 17:05, comparing 05:00-17:00 on 9 Nov (porch) and 10 Nov (attic) using only minutes clean on both days
 - `atis_reading.py <label>` appends a signal reading on two constant broadcasts to `atis.jsonl`; it briefly takes over the radio and skips itself if someone is listening
 - Don't change scanner, Wi-Fi or Bluetooth settings until the report has run
+
+## Remote access (clemoyne.com)
+
+- Cloudflare Tunnel `pi-radio`, run by `cloudflared` on sdrpi (unit `cloudflared`, config and credentials in `/etc/cloudflared`; `~/.cloudflared/cert.pem` can create tunnels for the zone). `radio.clemoyne.com` (sdrpi) and `planes.clemoyne.com` (garage_pi) both go to `remotegate` on `127.0.0.1:8097`; anything else gets 404. Ports 8095, 8096 and garage_pi's export API are never reachable
+- Both names sit behind one Cloudflare Access application ("Pi radio", Zero Trust Free), default-deny: only emails on its policies get in, by a one-time PIN sent to them, for 24 hours. Team, audience tag and owner email are in `CLAUDE.local.md`
+- `remote/remotegate.py` (deployed to `/mnt/data/remotegate/app`, unit `remotegate`, config `/mnt/data/remotegate/config.json`, `config.example.json` is the published shape, log `/mnt/data/logs/remotegate.log`) checks every request's Access token (`Cf-Access-Jwt-Assertion`, RS256, team certs, audience), so the Pis stay closed even if the Access application is changed. Anyone signed in may GET and HEAD; other methods and `/ws/listen` (it retunes the HackRF) need an email in `owners`, else 403 "Only the owner can do that from outside the house". That covers reboot, recording, ACARS, collections, settings, clip deletion and live listening on both Pis; new control endpoints are covered as long as they aren't GETs
+- It swaps each site's `local` URL (`http://sdrpi.local:8080`, `http://piaware.local`) for its public one in text replies and redirects, so links between the Pis work away from home. On `planes`, `/flights/api/` and `/weather/api/` are answered by sdrpi, and garage_pi's plane display uses its own site for them over https, since a cross-site fetch can't carry the Access login
+- To add a friend, put their email on a second Allow policy in the Access application (not in `owners`)
 
 ## Storage
 
