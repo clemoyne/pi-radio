@@ -17,6 +17,14 @@ for commit in $(git rev-list --reverse "$last..main"); do
     GIT_AUTHOR_DATE="$(git log -1 --format=%aD "$commit")" git commit-tree "$commit^{tree}" -p "$tip")
 done
 
+# Public commits carry only the GitHub no-reply address (since 23 Nov 2026), never a personal email.
+for commit in $(git rev-list "$(git rev-parse public)..$tip"); do
+  case "$(git log -1 --format='%ae %ce' "$commit")" in
+    *@users.noreply.github.com*@users.noreply.github.com) ;;
+    *) echo "not pushing to public: commit $commit isn't by the no-reply address (git config user.email)" >&2; exit 1 ;;
+  esac
+done
+
 bad=$(git ls-tree -r --name-only "$tip" | grep -i -E '\.csv$|channels\.json$|(^|/)places\.json$|(^|/)local\.json$|\.local\.md$|\.db$|(^|/)key$' || true)
 if [ -f .leakcheck ]; then
   bad="$bad$(grep -v -e '^#' -e '^$' .leakcheck | while read -r pattern; do git grep -l -i -E "$pattern" "$tip" || true; done)"
